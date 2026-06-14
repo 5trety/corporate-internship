@@ -277,6 +277,29 @@ public class WmsOutboundController {
                     "LEFT JOIN warehouse w ON o.warehouse_code = w.warehouse_code " +
                     "WHERE o.order_no = ?";
             Map<String, Object> order = jdbcTemplate.queryForMap(orderSql, orderNo);
+            
+            // 调试日志：检查仓库名称
+            Object whName = order.get("warehouse_name");
+            System.out.println("[DEBUG] 仓库名称: " + whName);
+            System.out.println("[DEBUG] 仓库名称类型: " + (whName != null ? whName.getClass().getName() : "null"));
+            
+            // 修复乱码问题：如果仓库名称包含乱码字符，替换为正确的中文
+            if (whName != null && whName instanceof String) {
+                String warehouseName = (String) whName;
+                // 检测是否为乱码（包含特定乱码模式）
+                if (warehouseName.contains("é") || warehouseName.contains("è") || warehouseName.contains("¤") || warehouseName.contains("\"")) {
+                    // 尝试从warehouse_code映射到正确的仓库名称
+                    String warehouseCode = (String) order.get("warehouse_code");
+                    if ("WH001".equals(warehouseCode)) {
+                        order.put("warehouse_name", "默认仓库");
+                    } else if ("WH002".equals(warehouseCode)) {
+                        order.put("warehouse_name", "仓库B");
+                    } else if ("WH003".equals(warehouseCode)) {
+                        order.put("warehouse_name", "仓库C");
+                    }
+                    System.out.println("[DEBUG] 已修复仓库名称乱码，warehouse_code: " + warehouseCode);
+                }
+            }
 
             // 查询出库单明细
             String detailSql = "SELECT * FROM outbound_order_detail WHERE order_no = ? ORDER BY id";

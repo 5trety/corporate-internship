@@ -37,7 +37,7 @@
             {{ orderData.customer_name }}
           </el-descriptions-item>
           <el-descriptions-item label="仓库">
-            {{ orderData.warehouse_name }}
+            {{ orderData.warehouse_code || '-' }}
           </el-descriptions-item>
           <el-descriptions-item label="创建人">
             {{ orderData.created_by || '-' }}

@@ -34,7 +34,7 @@
             {{ orderData.customer_name }}
           </el-descriptions-item>
           <el-descriptions-item label="仓库">
-            {{ orderData.warehouse_name }}
+            {{ orderData.warehouse_code || '-' }}
           </el-descriptions-item>
           <el-descriptions-item label="创建人">
             {{ orderData.created_by || '-' }}
@@ -121,7 +121,7 @@
                 @click="handleScanOutbound"
                 v-if="orderData.status !== 'completed'"
               >
-                <el-icon><Scanner /></el-icon>
+                <el-icon><Search /></el-icon>
                 扫码出库
               </el-button>
             </div>
@@ -241,7 +241,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Back, Printer, Scanner } from '@element-plus/icons-vue'
+import { Back, Printer, Search } from '@element-plus/icons-vue'
 import { getOutboundOrderDetail, getTraceByKanban } from '../../api/wms'
 
 const route = useRoute()
