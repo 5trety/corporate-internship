@@ -1,13 +1,12 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import basicSsl from '@vitejs/plugin-basic-ssl'
 
 export default defineConfig({
-  plugins: [vue(), basicSsl()],
+  plugins: [vue()],
   server: {
     host: '0.0.0.0',  // 允许局域网访问
     port: 5173,
-    https: true,  // 启用 HTTPS
+    https: false,  // 禁用 HTTPS，使用 HTTP
     proxy: {
       '/api': {
         target: 'http://localhost:8080',

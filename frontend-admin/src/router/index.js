@@ -86,6 +86,38 @@ const routes = [
             meta: { title: '库存追溯' }
           }
         ]
+      },
+      // ==================== WMS出库管理模块 ====================
+      {
+        path: 'wms-outbound',
+        name: 'wms-outbound',
+        meta: { title: 'WMS出库管理' },
+        children: [
+          {
+            path: 'outbound-order/list',
+            name: 'outbound-order-list',
+            component: () => import('../views/wms/OutboundOrderList.vue'),
+            meta: { title: '出库单列表' }
+          },
+          {
+            path: 'outbound-order/create',
+            name: 'outbound-order-create',
+            component: () => import('../views/wms/OutboundOrderForm.vue'),
+            meta: { title: '创建出库单' }
+          },
+          {
+            path: 'outbound-order/edit/:orderNo',
+            name: 'outbound-order-edit',
+            component: () => import('../views/wms/OutboundOrderForm.vue'),
+            meta: { title: '编辑出库单' }
+          },
+          {
+            path: 'scan-outbound',
+            name: 'scan-outbound',
+            component: () => import('../views/wms/ScanOutbound.vue'),
+            meta: { title: '扫码出库' }
+          }
+        ]
       }
     ]
   },

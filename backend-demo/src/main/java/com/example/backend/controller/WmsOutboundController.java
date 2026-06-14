@@ -27,6 +27,19 @@ public class WmsOutboundController {
     @PostMapping("/create")
     public Result<Map<String, Object>> createOutboundOrder(@RequestBody Map<String, Object> requestData, HttpSession session) {
         try {
+            // 打印接收到的原始数据
+            System.out.println("===== 接收到的请求数据 =====");
+            System.out.println("requestData类型: " + requestData.getClass().getName());
+            System.out.println("requestData大小: " + requestData.size());
+            System.out.println("所有key: " + requestData.keySet());
+            
+            // 检查每个字段的类型
+            for (String key : requestData.keySet()) {
+                Object value = requestData.get(key);
+                System.out.println("字段 [" + key + "] 类型: " + (value != null ? value.getClass().getName() : "null"));
+                System.out.println("字段 [" + key + "] 值: " + value);
+            }
+            
             String outboundType = (String) requestData.get("outboundType");
             String customerCode = (String) requestData.get("customerCode");
             String customerName = (String) requestData.get("customerName");
@@ -37,21 +50,41 @@ public class WmsOutboundController {
             Object detailsObj = requestData.get("details");
             List<Map<String, Object>> details = new ArrayList<>();
             
+            System.out.println("\n===== 处理details =====");
+            
+            if (detailsObj == null) {
+                System.err.println("错误: details为null");
+                return Result.error("出库明细不能为空");
+            }
+            
+            System.out.println("details类型: " + detailsObj.getClass().getName());
+            System.out.println("details值: " + detailsObj);
+            
             if (detailsObj instanceof List) {
                 @SuppressWarnings("unchecked")
                 List<Object> detailList = (List<Object>) detailsObj;
-                for (Object item : detailList) {
+                System.out.println("details数组长度: " + detailList.size());
+                
+                for (int i = 0; i < detailList.size(); i++) {
+                    Object item = detailList.get(i);
+                    System.out.println("\n第" + i + "个元素:");
+                    System.out.println("  类型: " + (item != null ? item.getClass().getName() : "null"));
+                    System.out.println("  值: " + item);
+                    
                     if (item instanceof Map) {
                         details.add((Map<String, Object>) item);
-                    } else if (item instanceof String) {
-                        // 如果是字符串，尝试解析JSON（虽然不太可能）
-                        System.out.println("警告: detail item是String类型，跳过");
+                        System.out.println("  ✓ 成功转换为Map");
+                    } else {
+                        System.err.println("  ✗ 错误: 元素不是Map类型，实际类型: " + (item != null ? item.getClass().getName() : "null"));
+                        return Result.error("出库明细格式错误，第" + (i+1) + "行数据格式不正确。期望收到对象(Map)类型，但实际收到: " + (item != null ? item.getClass().getName() : "null"));
                     }
                 }
             } else if (detailsObj instanceof String) {
-                // 如果是JSON字符串，需要解析
                 System.err.println("错误: details是String类型，应该是数组");
                 return Result.error("出库明细格式错误，应该是数组格式");
+            } else {
+                System.err.println("错误: details类型未知: " + detailsObj.getClass().getName());
+                return Result.error("出库明细格式错误");
             }
 
             if (details.isEmpty()) {
@@ -68,10 +101,35 @@ public class WmsOutboundController {
             int totalQuantity = 0;
             int totalBoxes = 0;
             for (Map<String, Object> detail : details) {
-                Integer quantity = (Integer) detail.get("expectedQuantity");
-                Integer boxes = (Integer) detail.get("expectedBoxes");
-                totalQuantity += (quantity != null ? quantity : 0);
-                totalBoxes += (boxes != null ? boxes : 0);
+                // 使用 Number 类型安全转换
+                Object quantityObj = detail.get("expectedQuantity");
+                Object boxesObj = detail.get("expectedBoxes");
+                
+                int quantity = 0;
+                int boxes = 0;
+                
+                if (quantityObj instanceof Number) {
+                    quantity = ((Number) quantityObj).intValue();
+                } else if (quantityObj instanceof String) {
+                    try {
+                        quantity = Integer.parseInt((String) quantityObj);
+                    } catch (NumberFormatException e) {
+                        quantity = 0;
+                    }
+                }
+                
+                if (boxesObj instanceof Number) {
+                    boxes = ((Number) boxesObj).intValue();
+                } else if (boxesObj instanceof String) {
+                    try {
+                        boxes = Integer.parseInt((String) boxesObj);
+                    } catch (NumberFormatException e) {
+                        boxes = 0;
+                    }
+                }
+                
+                totalQuantity += quantity;
+                totalBoxes += boxes;
             }
 
             // 插入出库单
@@ -86,14 +144,53 @@ public class WmsOutboundController {
                     "expected_quantity, shipped_quantity, packaging_capacity, expected_boxes, shipped_boxes, unit) " +
                     "VALUES (?, ?, ?, ?, 0, ?, ?, 0, ?)";
             for (Map<String, Object> detail : details) {
+                // 安全转换数字类型
+                Object expectedQtyObj = detail.get("expectedQuantity");
+                Object packagingCapObj = detail.get("packagingCapacity");
+                Object expectedBoxesObj = detail.get("expectedBoxes");
+                
+                int expectedQty = 0;
+                int packagingCap = 0;
+                int expectedBoxes = 0;
+                
+                if (expectedQtyObj instanceof Number) {
+                    expectedQty = ((Number) expectedQtyObj).intValue();
+                } else if (expectedQtyObj instanceof String) {
+                    try {
+                        expectedQty = Integer.parseInt((String) expectedQtyObj);
+                    } catch (NumberFormatException e) {
+                        expectedQty = 0;
+                    }
+                }
+                
+                if (packagingCapObj instanceof Number) {
+                    packagingCap = ((Number) packagingCapObj).intValue();
+                } else if (packagingCapObj instanceof String) {
+                    try {
+                        packagingCap = Integer.parseInt((String) packagingCapObj);
+                    } catch (NumberFormatException e) {
+                        packagingCap = 0;
+                    }
+                }
+                
+                if (expectedBoxesObj instanceof Number) {
+                    expectedBoxes = ((Number) expectedBoxesObj).intValue();
+                } else if (expectedBoxesObj instanceof String) {
+                    try {
+                        expectedBoxes = Integer.parseInt((String) expectedBoxesObj);
+                    } catch (NumberFormatException e) {
+                        expectedBoxes = 0;
+                    }
+                }
+                
                 jdbcTemplate.update(detailSql,
                         orderNo,
                         detail.get("partCode"),
                         detail.get("partName"),
-                        detail.get("expectedQuantity"),
-                        detail.get("packagingCapacity"),
-                        detail.get("expectedBoxes"),
-                        detail.get("unit")
+                        expectedQty,
+                        packagingCap,
+                        expectedBoxes,
+                        detail.get("unit") != null ? detail.get("unit") : "个"
                 );
             }
 
@@ -520,6 +617,50 @@ public class WmsOutboundController {
         }
     }
 
+    /**
+     * 获取所有待出库的FIFO看板列表（前端扫码出库页面使用）
+     */
+    @GetMapping("/fifo/list")
+    public Result<List<Map<String, Object>>> getFifoKanbanListAll(
+            @RequestParam(required = false) String orderNo) {
+        try {
+            String sql;
+            List<Object> params = new ArrayList<>();
+            
+            if (orderNo != null && !orderNo.isEmpty()) {
+                // 如果指定了出库单号，查询该出库单关联的零件的看板
+                sql = "SELECT k.*, c.quantity as current_quantity, c.location_code, " +
+                        "(SELECT action_time FROM inventory_trace " +
+                        " WHERE kanban_no = k.kanban_no AND action_type = 'INBOUND' " +
+                        " ORDER BY action_time ASC LIMIT 1) as inbound_time " +
+                        "FROM kanban k " +
+                        "LEFT JOIN current_inventory c ON k.kanban_no = c.kanban_no " +
+                        "WHERE k.status = 'stored' AND c.quantity > 0 " +
+                        "AND k.part_code IN (SELECT DISTINCT part_code FROM outbound_order_detail WHERE order_no = ?) " +
+                        "ORDER BY inbound_time ASC";
+                params.add(orderNo);
+            } else {
+                // 查询所有已入库的看板
+                sql = "SELECT k.*, c.quantity as current_quantity, c.location_code, " +
+                        "(SELECT action_time FROM inventory_trace " +
+                        " WHERE kanban_no = k.kanban_no AND action_type = 'INBOUND' " +
+                        " ORDER BY action_time ASC LIMIT 1) as inbound_time " +
+                        "FROM kanban k " +
+                        "LEFT JOIN current_inventory c ON k.kanban_no = c.kanban_no " +
+                        "WHERE k.status = 'stored' AND c.quantity > 0 " +
+                        "ORDER BY inbound_time ASC " +
+                        "LIMIT 100";
+            }
+
+            List<Map<String, Object>> kanbans = jdbcTemplate.queryForList(sql, params.toArray());
+            return Result.success(kanbans);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Result.error("获取FIFO看板列表失败: " + e.getMessage());
+        }
+    }
+
     // ==================== 库存追溯 ====================
 
     /**
@@ -646,7 +787,20 @@ public class WmsOutboundController {
      * 获取当前登录用户
      */
     private String getCurrentUser(HttpSession session) {
-        Map<String, Object> user = (Map<String, Object>) session.getAttribute("user");
-        return user != null ? (String) user.get("username") : "system";
+        Object userObj = session.getAttribute("user");
+        if (userObj == null) {
+            return "system";
+        }
+        // 检查 user 对象的类型
+        if (userObj instanceof Map) {
+            Map<String, Object> user = (Map<String, Object>) userObj;
+            return (String) user.getOrDefault("username", "system");
+        } else if (userObj instanceof String) {
+            // 如果是字符串，直接返回
+            return (String) userObj;
+        } else {
+            // 其他类型，返回默认值
+            return "system";
+        }
     }
 }

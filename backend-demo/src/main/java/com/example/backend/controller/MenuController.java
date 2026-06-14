@@ -128,6 +128,43 @@ public class MenuController {
         wms.put("children", wmsChildren);
         menus.add(wms);
 
+        // ==================== 一级菜单 5：WMS出库管理 ====================
+        Map<String, Object> wmsOutbound = new LinkedHashMap<>();
+        wmsOutbound.put("id", 5);
+        wmsOutbound.put("name", "WMS出库管理");
+        wmsOutbound.put("path", null);
+        wmsOutbound.put("icon", "Box");
+        wmsOutbound.put("component", null);
+
+        List<Map<String, Object>> outboundChildren = new ArrayList<>();
+
+        Map<String, Object> outboundList = new LinkedHashMap<>();
+        outboundList.put("id", 51);
+        outboundList.put("name", "出库单列表");
+        outboundList.put("path", "/wms-outbound/outbound-order/list");
+        outboundList.put("icon", "Document");
+        outboundList.put("component", "OutboundOrderList");
+        outboundChildren.add(outboundList);
+
+        Map<String, Object> createOutbound = new LinkedHashMap<>();
+        createOutbound.put("id", 52);
+        createOutbound.put("name", "创建出库单");
+        createOutbound.put("path", "/wms-outbound/outbound-order/create");
+        createOutbound.put("icon", "Plus");
+        createOutbound.put("component", "OutboundOrderForm");
+        outboundChildren.add(createOutbound);
+
+        Map<String, Object> scanOutbound = new LinkedHashMap<>();
+        scanOutbound.put("id", 53);
+        scanOutbound.put("name", "扫码出库");
+        scanOutbound.put("path", "/wms-outbound/scan-outbound");
+        scanOutbound.put("icon", "Camera");
+        scanOutbound.put("component", "ScanOutbound");
+        outboundChildren.add(scanOutbound);
+
+        wmsOutbound.put("children", outboundChildren);
+        menus.add(wmsOutbound);
+
         return Result.success(menus);
     }
 }
