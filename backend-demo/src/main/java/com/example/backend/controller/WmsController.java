@@ -18,6 +18,24 @@ public class WmsController {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    /**
+     * 获取当前登录用户
+     */
+    private String getCurrentUser(HttpSession session) {
+        String username = (String) session.getAttribute("user");
+        if (username == null) {
+            return null;
+        }
+        return username;
+    }
+
+    /**
+     * 检查登录状态
+     */
+    private boolean checkLogin(HttpSession session) {
+        return getCurrentUser(session) != null;
+    }
+
     // ==================== 基础信息管理 ====================
 
     /**
@@ -213,9 +231,13 @@ public class WmsController {
     @PostMapping("/inbound-order/create")
     public Result<Map<String, Object>> createInboundOrder(@RequestBody WmsInboundOrder order, HttpSession session) {
         try {
+            // 检查登录
+            String username = getCurrentUser(session);
+            if (username == null) {
+                return Result.error("请先登录");
+            }
+
             String orderNo = generateOrderNo();
-            String username = (String) session.getAttribute("user");
-            if (username == null) username = "system";
 
             // 插入主表
             String sql = "INSERT INTO inbound_order (order_no, inbound_type, supplier_code, warehouse_code, " +
@@ -250,6 +272,7 @@ public class WmsController {
      */
     @GetMapping("/inbound-order/list")
     public Result<Map<String, Object>> getInboundOrderList(
+            HttpSession session,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String supplierCode,
             @RequestParam(required = false) String startDate,
@@ -257,12 +280,20 @@ public class WmsController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize) {
         try {
+            // 检查登录
+            String currentUser = getCurrentUser(session);
+            if (currentUser == null) {
+                return Result.error("请先登录");
+            }
+
             StringBuilder sql = new StringBuilder(
                     "SELECT o.*, s.supplier_name, w.warehouse_name FROM inbound_order o " +
                             "LEFT JOIN supplier s ON o.supplier_code = s.supplier_code " +
-                            "LEFT JOIN warehouse w ON o.warehouse_code = w.warehouse_code WHERE 1=1 "
+                            "LEFT JOIN warehouse w ON o.warehouse_code = w.warehouse_code " +
+                            "WHERE o.created_by = ? "  // 只查询当前用户的数据
             );
             List<Object> params = new ArrayList<>();
+            params.add(currentUser);
 
             if (status != null && !status.isEmpty()) {
                 sql.append("AND o.status = ? ");
@@ -327,16 +358,23 @@ public class WmsController {
      * 获取入库单详情
      */
     @GetMapping("/inbound-order/detail/{orderNo}")
-    public Result<Map<String, Object>> getInboundOrderDetail(@PathVariable String orderNo) {
+    public Result<Map<String, Object>> getInboundOrderDetail(@PathVariable String orderNo, HttpSession session) {
         try {
+            // 检查登录
+            String currentUser = getCurrentUser(session);
+            if (currentUser == null) {
+                return Result.error("请先登录");
+            }
+
             // 使用更安全的查询方式，避免 EmptyResultDataAccessException
             String orderSql = "SELECT o.*, s.supplier_name, w.warehouse_name FROM inbound_order o " +
                     "LEFT JOIN supplier s ON o.supplier_code = s.supplier_code " +
-                    "LEFT JOIN warehouse w ON o.warehouse_code = w.warehouse_code WHERE o.order_no = ?";
+                    "LEFT JOIN warehouse w ON o.warehouse_code = w.warehouse_code " +
+                    "WHERE o.order_no = ? AND o.created_by = ?";  // 添加用户验证
 
-            List<Map<String, Object>> orders = jdbcTemplate.queryForList(orderSql, orderNo);
+            List<Map<String, Object>> orders = jdbcTemplate.queryForList(orderSql, orderNo, currentUser);
             if (orders.isEmpty()) {
-                return Result.error("入库单不存在: " + orderNo);
+                return Result.error("入库单不存在或无权访问: " + orderNo);
             }
             Map<String, Object> order = orders.get(0);
 
@@ -432,9 +470,9 @@ public class WmsController {
      * 打印入库单
      */
     @GetMapping("/print/inbound-order/{orderNo}")
-    public Result<Map<String, Object>> printInboundOrder(@PathVariable String orderNo) {
+    public Result<Map<String, Object>> printInboundOrder(@PathVariable String orderNo, HttpSession session) {
         try {
-            return getInboundOrderDetail(orderNo);
+            return getInboundOrderDetail(orderNo, session);
         } catch (Exception e) {
             return Result.error("获取打印数据失败: " + e.getMessage());
         }
@@ -617,10 +655,14 @@ public class WmsController {
     @PostMapping("/scan/inbound")
     public Result<Map<String, Object>> scanInbound(@RequestBody Map<String, String> request, HttpSession session) {
         try {
+            // 检查登录
+            String username = getCurrentUser(session);
+            if (username == null) {
+                return Result.error("请先登录");
+            }
+
             String kanbanNo = request.get("kanbanNo");
             String locationCode = request.get("locationCode");
-            String username = (String) session.getAttribute("user");
-            if (username == null) username = "system";
 
             // 查询看板
             Map<String, Object> kanban = jdbcTemplate.queryForMap(
