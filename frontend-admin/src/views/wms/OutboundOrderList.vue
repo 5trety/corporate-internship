@@ -2,7 +2,7 @@
   <div class="wms-page">
     <div class="page-header">
       <h2>出库单管理</h2>
-      <el-button type="primary" @click="$router.push('/wms/outbound-order/create')">
+      <el-button type="primary" @click="$router.push('/wms-outbound/outbound-order/create')">
         <el-icon><Plus /></el-icon>
         创建出库单
       </el-button>
@@ -150,8 +150,8 @@
       <el-table :data="kanbanItems" stripe>
         <el-table-column prop="partCode" label="零件号" width="150" />
         <el-table-column prop="partName" label="零件名称" width="150" />
-        <el-table-column prop="expectedQuantity" label="数量" width="80" />
-        <el-table-column prop="expectedBoxes" label="箱数" width="80" />
+        <el-table-column prop="expectedQuantity" label="剩余数量" width="100" />
+        <el-table-column prop="expectedBoxes" label="剩余箱数" width="100" />
         <el-table-column label="看板号" width="220">
           <template #default="{ row }">
             <el-input v-model="row.kanbanNo" placeholder="自动生成" disabled />
@@ -213,6 +213,27 @@ const getStatusType = (status) => {
   }
 }
 
+const toNumber = (value) => Number(value || 0)
+
+const buildRemainingKanbanItem = (detail) => {
+  const expectedQuantity = toNumber(detail.expected_quantity ?? detail.expectedQuantity)
+  const shippedQuantity = toNumber(detail.shipped_quantity ?? detail.shippedQuantity)
+  const remainingQuantity = Math.max(0, expectedQuantity - shippedQuantity)
+  const expectedBoxes = toNumber(detail.expected_boxes ?? detail.expectedBoxes)
+  const shippedBoxes = toNumber(detail.shipped_boxes ?? detail.shippedBoxes)
+  const remainingBoxes = Math.max(1, expectedBoxes - shippedBoxes)
+
+  return {
+    partCode: detail.part_code || detail.partCode,
+    partName: detail.part_name || detail.partName,
+    remainingQuantity,
+    expectedQuantity: remainingQuantity,
+    expectedBoxes: remainingBoxes,
+    kanbanNo: '',
+    qrCodeImage: null
+  }
+}
+
 const loadData = async () => {
   loading.value = true
   try {
@@ -251,7 +272,7 @@ const viewDetail = async (row) => {
 
 // 编辑出库单
 const editOrder = (row) => {
-  router.push(`/wms/outbound-order/edit/${row.orderNo}`)
+  router.push(`/wms-outbound/outbound-order/edit/${row.orderNo}`)
 }
 
 const handleDelete = (row) => {
@@ -277,15 +298,16 @@ const openPrintKanban = async (row) => {
   if (res.code === 200) {
     const details = res.data?.details || []
     console.log('出库单详情:', details)
-    // 使用后端返回的下划线格式字段名
-    kanbanItems.value = details.map(d => ({
-      partCode: d.part_code || d.partCode,
-      partName: d.part_name || d.partName,
-      expectedQuantity: d.expected_quantity || d.expectedQuantity,
-      expectedBoxes: d.expected_boxes || d.expectedBoxes || 1,
-      kanbanNo: '',
-      qrCodeImage: null
-    }))
+    const remainingItems = details
+      .map(buildRemainingKanbanItem)
+      .filter(item => item.remainingQuantity > 0)
+
+    if (remainingItems.length === 0) {
+      ElMessage.warning('该出库单明细已全部完成，无需打印看板')
+      return
+    }
+
+    kanbanItems.value = remainingItems
     kanbanDialogVisible.value = true
   } else {
     ElMessage.error('获取出库单详情失败')
@@ -314,6 +336,7 @@ const generateAndPrintAll = async () => {
   const items = kanbanItems.value.map(item => ({
     partCode: item.partCode,
     partName: item.partName,
+    expectedQuantity: item.remainingQuantity,
     quantity: item.expectedQuantity,
     boxCount: item.expectedBoxes || 1
   }))

@@ -5,47 +5,45 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.servlet.http.HttpSession;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 public class MenuController {
 
-    // 获取菜单接口（需登录）
     @GetMapping("/menus")
     public Result<List<Map<String, Object>>> getMenus(HttpSession session) {
-        // 检查是否登录
         if (session.getAttribute("user") == null) {
             return Result.error("未登录");
         }
 
-        // 构建菜单数据（树形结构，支持多层）
         List<Map<String, Object>> menus = new ArrayList<>();
 
-        // 一级菜单 1：工作台
-        Map<String, Object> dash = new LinkedHashMap<>();
-        dash.put("id", 1);
-        dash.put("name", "工作台");
-        dash.put("path", "/dashboard");
-        dash.put("icon", "House");
-        dash.put("component", "Dashboard");
-        menus.add(dash);
+        Map<String, Object> dashboard = new LinkedHashMap<>();
+        dashboard.put("id", 1);
+        dashboard.put("name", "工作台");
+        dashboard.put("path", "/dashboard");
+        dashboard.put("icon", "House");
+        dashboard.put("component", "Dashboard");
+        menus.add(dashboard);
 
-        // 一级菜单 2：系统管理（含二级菜单）
-        Map<String, Object> sys = new LinkedHashMap<>();
-        sys.put("id", 2);
-        sys.put("name", "系统管理");
-        sys.put("path", null);
-        sys.put("icon", "Setting");
-        sys.put("component", null);
+        Map<String, Object> system = new LinkedHashMap<>();
+        system.put("id", 2);
+        system.put("name", "系统管理");
+        system.put("path", null);
+        system.put("icon", "Setting");
+        system.put("component", null);
 
-        List<Map<String, Object>> children = new ArrayList<>();
+        List<Map<String, Object>> systemChildren = new ArrayList<>();
         Map<String, Object> user = new LinkedHashMap<>();
         user.put("id", 21);
         user.put("name", "用户管理");
         user.put("path", "/system/user");
         user.put("icon", "User");
         user.put("component", "UserManage");
-        children.add(user);
+        systemChildren.add(user);
 
         Map<String, Object> role = new LinkedHashMap<>();
         role.put("id", 22);
@@ -53,12 +51,11 @@ public class MenuController {
         role.put("path", "/system/role");
         role.put("icon", "Key");
         role.put("component", "RoleManage");
-        children.add(role);
+        systemChildren.add(role);
 
-        sys.put("children", children);
-        menus.add(sys);
+        system.put("children", systemChildren);
+        menus.add(system);
 
-        // 一级菜单 3：标签页示例（用于演示联动）
         Map<String, Object> tabsDemo = new LinkedHashMap<>();
         tabsDemo.put("id", 3);
         tabsDemo.put("name", "标签页示例");
@@ -67,68 +64,22 @@ public class MenuController {
         tabsDemo.put("component", "TabsDemo");
         menus.add(tabsDemo);
 
-        // ==================== 一级菜单 4：WMS入库管理 ====================
-        Map<String, Object> wms = new LinkedHashMap<>();
-        wms.put("id", 4);
-        wms.put("name", "WMS入库管理");
-        wms.put("path", null);
-        wms.put("icon", "Box");
-        wms.put("component", null);
+        Map<String, Object> wmsInbound = new LinkedHashMap<>();
+        wmsInbound.put("id", 4);
+        wmsInbound.put("name", "WMS入库管理");
+        wmsInbound.put("path", null);
+        wmsInbound.put("icon", "Box");
+        wmsInbound.put("component", null);
 
-        List<Map<String, Object>> wmsChildren = new ArrayList<>();
+        List<Map<String, Object>> inboundChildren = new ArrayList<>();
+        inboundChildren.add(menu(41, "供应商管理", "/wms/supplier", "Document", "SupplierManage"));
+        inboundChildren.add(menu(42, "零件管理", "/wms/part", "Goods", "PartManage"));
+        inboundChildren.add(menu(43, "入库单列表", "/wms/inbound-order/list", "Document", "InboundOrderList"));
+        inboundChildren.add(menu(44, "创建入库单", "/wms/inbound-order/create", "Plus", "InboundOrderForm"));
+        inboundChildren.add(menu(45, "扫码入库", "/wms/scan", "Camera", "ScanInbound"));
+        wmsInbound.put("children", inboundChildren);
+        menus.add(wmsInbound);
 
-        Map<String, Object> supplier = new LinkedHashMap<>();
-        supplier.put("id", 41);
-        supplier.put("name", "供应商管理");
-        supplier.put("path", "/wms/supplier");
-        supplier.put("icon", "Document");
-        supplier.put("component", "SupplierManage");
-        wmsChildren.add(supplier);
-
-        Map<String, Object> part = new LinkedHashMap<>();
-        part.put("id", 42);
-        part.put("name", "零件管理");
-        part.put("path", "/wms/part");
-        part.put("icon", "Goods");
-        part.put("component", "PartManage");
-        wmsChildren.add(part);
-
-        Map<String, Object> inboundList = new LinkedHashMap<>();
-        inboundList.put("id", 43);
-        inboundList.put("name", "入库单列表");
-        inboundList.put("path", "/wms/inbound-order/list");
-        inboundList.put("icon", "Document");
-        inboundList.put("component", "InboundOrderList");
-        wmsChildren.add(inboundList);
-
-        Map<String, Object> createOrder = new LinkedHashMap<>();
-        createOrder.put("id", 44);
-        createOrder.put("name", "创建入库单");
-        createOrder.put("path", "/wms/inbound-order/create");
-        createOrder.put("icon", "Plus");
-        createOrder.put("component", "InboundOrderForm");
-        wmsChildren.add(createOrder);
-
-        Map<String, Object> scan = new LinkedHashMap<>();
-        scan.put("id", 45);
-        scan.put("name", "扫码入库");
-        scan.put("path", "/wms/scan");
-        scan.put("icon", "Camera");
-        scan.put("component", "ScanInbound");
-        wmsChildren.add(scan);
-
-        Map<String, Object> trace = new LinkedHashMap<>();
-        trace.put("id", 46);
-        trace.put("name", "库存追溯");
-        trace.put("path", "/wms/trace");
-        trace.put("icon", "Search");
-        trace.put("component", "InventoryTrace");
-        wmsChildren.add(trace);
-
-        wms.put("children", wmsChildren);
-        menus.add(wms);
-
-        // ==================== 一级菜单 5：WMS出库管理 ====================
         Map<String, Object> wmsOutbound = new LinkedHashMap<>();
         wmsOutbound.put("id", 5);
         wmsOutbound.put("name", "WMS出库管理");
@@ -136,43 +87,25 @@ public class MenuController {
         wmsOutbound.put("icon", "Box");
         wmsOutbound.put("component", null);
 
-        List<Map<String, Object>> wmsOutboundChildren = new ArrayList<>();
-
-        Map<String, Object> outboundList = new LinkedHashMap<>();
-        outboundList.put("id", 51);
-        outboundList.put("name", "出库单列表");
-        outboundList.put("path", "/wms-outbound/outbound-order/list");
-        outboundList.put("icon", "Document");
-        outboundList.put("component", "OutboundOrderList");
-        wmsOutboundChildren.add(outboundList);
-
-        Map<String, Object> createOutboundOrder = new LinkedHashMap<>();
-        createOutboundOrder.put("id", 52);
-        createOutboundOrder.put("name", "创建出库单");
-        createOutboundOrder.put("path", "/wms-outbound/outbound-order/create");
-        createOutboundOrder.put("icon", "Plus");
-        createOutboundOrder.put("component", "OutboundOrderForm");
-        wmsOutboundChildren.add(createOutboundOrder);
-
-        Map<String, Object> scanOutbound = new LinkedHashMap<>();
-        scanOutbound.put("id", 53);
-        scanOutbound.put("name", "扫码出库");
-        scanOutbound.put("path", "/wms-outbound/scan");
-        scanOutbound.put("icon", "Camera");
-        scanOutbound.put("component", "ScanOutbound");
-        wmsOutboundChildren.add(scanOutbound);
-
-        Map<String, Object> outboundHistory = new LinkedHashMap<>();
-        outboundHistory.put("id", 54);
-        outboundHistory.put("name", "出库历史");
-        outboundHistory.put("path", "/wms-outbound/history");
-        outboundHistory.put("icon", "Search");
-        outboundHistory.put("component", "OutboundHistory");
-        wmsOutboundChildren.add(outboundHistory);
-
-        wmsOutbound.put("children", wmsOutboundChildren);
+        List<Map<String, Object>> outboundChildren = new ArrayList<>();
+        outboundChildren.add(menu(51, "出库单列表", "/wms-outbound/outbound-order/list", "Document", "OutboundOrderList"));
+        outboundChildren.add(menu(52, "创建出库单", "/wms-outbound/outbound-order/create", "Plus", "OutboundOrderForm"));
+        outboundChildren.add(menu(53, "扫码出库", "/wms-outbound/scan", "Camera", "ScanOutbound"));
+        wmsOutbound.put("children", outboundChildren);
         menus.add(wmsOutbound);
 
+        menus.add(menu(6, "库存追溯", "/inventory-trace", "Search", "InventoryTrace"));
+
         return Result.success(menus);
+    }
+
+    private Map<String, Object> menu(int id, String name, String path, String icon, String component) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", id);
+        item.put("name", name);
+        item.put("path", path);
+        item.put("icon", icon);
+        item.put("component", component);
+        return item;
     }
 }

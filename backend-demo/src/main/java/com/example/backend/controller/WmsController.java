@@ -4,6 +4,8 @@ import com.example.backend.entity.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpSession;
@@ -61,6 +63,23 @@ public class WmsController {
         try {
             if (supplier.getId() == null) {
                 // 新增
+                List<Map<String, Object>> existing = jdbcTemplate.queryForList(
+                        "SELECT id, status FROM supplier WHERE supplier_code = ?",
+                        supplier.getSupplierCode());
+                if (!existing.isEmpty()) {
+                    Map<String, Object> row = existing.get(0);
+                    Integer id = ((Number) row.get("id")).intValue();
+                    Integer status = ((Number) row.get("status")).intValue();
+                    if (status != null && status == 1) {
+                        return Result.error("供应商代码已存在");
+                    }
+                    jdbcTemplate.update("UPDATE supplier SET supplier_name=?, contact_person=?, phone=?, address=?, status=1 WHERE id=?",
+                            supplier.getSupplierName(), supplier.getContactPerson(),
+                            supplier.getPhone(), supplier.getAddress(), id);
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("success", true);
+                    return Result.success(result);
+                }
                 String sql = "INSERT INTO supplier (supplier_code, supplier_name, contact_person, phone, address) VALUES (?, ?, ?, ?, ?)";
                 jdbcTemplate.update(sql, supplier.getSupplierCode(), supplier.getSupplierName(),
                         supplier.getContactPerson(), supplier.getPhone(), supplier.getAddress());
@@ -132,6 +151,9 @@ public class WmsController {
     @PostMapping("/part/save")
     public Result<Map<String, Object>> savePart(@RequestBody WmsPart part) {
         try {
+            if (part.getPackagingCapacity() == null || part.getPackagingCapacity() <= 0) {
+                return Result.error("包装容量必须大于0");
+            }
             if (part.getId() == null) {
                 String sql = "INSERT INTO part (part_code, part_name, supplier_code, packaging_capacity, unit, price, weight) VALUES (?, ?, ?, ?, ?, ?, ?)";
                 jdbcTemplate.update(sql, part.getPartCode(), part.getPartName(), part.getSupplierCode(),
@@ -535,6 +557,38 @@ public class WmsController {
                     return Result.error("数量不能为空或为0，第" + (i+1) + "个item");
                 }
 
+                List<Map<String, Object>> outboundDetailRows = jdbcTemplate.queryForList(
+                        "SELECT * FROM outbound_order_detail WHERE order_no = ? AND part_code = ?",
+                        orderNo, partCode);
+                if (!outboundDetailRows.isEmpty()) {
+                    Map<String, Object> outboundDetail = outboundDetailRows.get(0);
+                    int expectedQuantity = ((Number) outboundDetail.get("expected_quantity")).intValue();
+                    int shippedQuantity = ((Number) outboundDetail.get("shipped_quantity")).intValue();
+                    int remainingQuantity = expectedQuantity - shippedQuantity;
+                    if (remainingQuantity <= 0) {
+                        return Result.error("零件 " + partCode + " 已完成出库，不能生成出库看板");
+                    }
+                    if (quantity > remainingQuantity) {
+                        return Result.error("零件 " + partCode + " 生成数量超过剩余出库数量，剩余: " + remainingQuantity);
+                    }
+
+                    Integer availableQuantity = jdbcTemplate.queryForObject(
+                            "SELECT COALESCE(SUM(quantity), 0) FROM current_inventory WHERE part_code = ? AND quantity > 0",
+                            Integer.class, partCode);
+                    if (availableQuantity == null || availableQuantity <= 0) {
+                        return Result.error("零件 " + partCode + " 库存不足，不能生成出库看板");
+                    }
+                    if (availableQuantity < quantity) {
+                        return Result.error("零件 " + partCode + " 库存不足，当前可用: " + availableQuantity + ", 需要: " + quantity);
+                    }
+
+                    int packagingCapacity = ((Number) outboundDetail.get("packaging_capacity")).intValue();
+                    if (packagingCapacity <= 0) {
+                        packagingCapacity = 1;
+                    }
+                    boxCount = (int) Math.ceil((double) quantity / packagingCapacity);
+                }
+
                 // 生成看板号
                 String kanbanNo = "KAN-" + System.currentTimeMillis() + "-" + partCode;
 
@@ -730,10 +784,94 @@ public class WmsController {
     /**
      * 获取库存追溯记录
      */
+    /**
+     * 验证看板是否可出库：必须已经形成当前库存，且库存数量大于0。
+     */
+    @GetMapping("/kanban/outbound-validate/{kanbanNo}")
+    public Result<Map<String, Object>> validateOutboundKanban(
+            @PathVariable String kanbanNo,
+            @RequestParam(required = false) String orderNo) {
+        try {
+            String sql = "SELECT i.*, k.status, s.supplier_name, l.location_name FROM current_inventory i " +
+                    "LEFT JOIN kanban k ON i.kanban_no = k.kanban_no " +
+                    "LEFT JOIN supplier s ON i.supplier_code = s.supplier_code " +
+                    "LEFT JOIN storage_location l ON i.location_code = l.location_code " +
+                    "WHERE i.kanban_no = ? AND i.quantity > 0";
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, kanbanNo);
+            if (!rows.isEmpty()) {
+                Map<String, Object> inventory = rows.get(0);
+                Map<String, Object> result = new HashMap<>();
+                result.put("valid", true);
+                result.put("sourceType", "inventory");
+                result.put("kanbanNo", inventory.get("kanban_no"));
+                result.put("partCode", inventory.get("part_code"));
+                result.put("partName", inventory.get("part_name"));
+                result.put("supplierCode", inventory.get("supplier_code"));
+                result.put("supplierName", inventory.get("supplier_name"));
+                result.put("quantity", inventory.get("quantity"));
+                result.put("locationCode", inventory.get("location_code"));
+                result.put("locationName", inventory.get("location_name"));
+                result.put("status", inventory.get("status"));
+                return Result.success(result);
+            }
+
+            String labelSql = "SELECT k.*, o.status AS order_status FROM kanban k " +
+                    "LEFT JOIN outbound_order o ON k.order_no = o.order_no " +
+                    "WHERE k.kanban_no = ? AND k.status = 'pending'";
+            List<Map<String, Object>> labels = jdbcTemplate.queryForList(labelSql, kanbanNo);
+            if (labels.isEmpty()) {
+                return Result.error("看板不存在、未入库或当前无可用库存");
+            }
+
+            Map<String, Object> label = labels.get(0);
+            String labelOrderNo = String.valueOf(label.get("order_no"));
+            String orderStatus = label.get("order_status") == null ? "" : String.valueOf(label.get("order_status"));
+            if (orderStatus.isEmpty()) {
+                return Result.error("看板未入库，不能用于扫码出库");
+            }
+            if (orderNo != null && !orderNo.isEmpty() && !orderNo.equals(labelOrderNo)) {
+                return Result.error("看板属于出库单 " + labelOrderNo + "，请先选择对应出库单");
+            }
+            if ("completed".equals(orderStatus)) {
+                return Result.error("出库单已完成");
+            }
+
+            String partCode = String.valueOf(label.get("part_code"));
+            List<Map<String, Object>> detailRows = jdbcTemplate.queryForList(
+                    "SELECT * FROM outbound_order_detail WHERE order_no = ? AND part_code = ?",
+                    labelOrderNo, partCode);
+            if (detailRows.isEmpty()) {
+                return Result.error("零件 " + partCode + " 不在该出库单明细中");
+            }
+            Map<String, Object> detail = detailRows.get(0);
+            int expectedQuantity = ((Number) detail.get("expected_quantity")).intValue();
+            int shippedQuantity = ((Number) detail.get("shipped_quantity")).intValue();
+            int remainingQuantity = expectedQuantity - shippedQuantity;
+            if (remainingQuantity <= 0) {
+                return Result.error("零件 " + partCode + " 已完成出库，请扫描其他零件");
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("valid", true);
+            result.put("sourceType", "outboundLabel");
+            result.put("kanbanNo", label.get("kanban_no"));
+            result.put("orderNo", labelOrderNo);
+            result.put("partCode", partCode);
+            result.put("partName", label.get("part_name"));
+            result.put("supplierCode", label.get("supplier_code"));
+            result.put("quantity", Math.min(((Number) label.get("quantity")).intValue(), remainingQuantity));
+            result.put("status", label.get("status"));
+            return Result.success(result);
+        } catch (Exception e) {
+            return Result.error("验证出库看板失败: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/trace/list")
     public Result<Map<String, Object>> getTraceList(
             @RequestParam(required = false) String partCode,
             @RequestParam(required = false) String kanbanNo,
+            @RequestParam(required = false) String actionType,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(defaultValue = "1") int page,
@@ -752,6 +890,10 @@ public class WmsController {
             if (kanbanNo != null && !kanbanNo.isEmpty()) {
                 sql.append(" AND t.kanban_no LIKE ?");
                 params.add("%" + kanbanNo + "%");
+            }
+            if (actionType != null && !actionType.isEmpty()) {
+                sql.append(" AND t.action_type = ?");
+                params.add(actionType);
             }
             if (startDate != null && !startDate.isEmpty()) {
                 sql.append(" AND DATE(t.action_time) >= ?");
@@ -1028,14 +1170,31 @@ public class WmsController {
     /**
      * 扫码出库 - 执行FIFO先进先出
      */
+    @Transactional
     @PostMapping("/scan/outbound")
     public Result<Map<String, Object>> scanOutbound(@RequestBody Map<String, Object> request, HttpSession session) {
         try {
             String orderNo = (String) request.get("orderNo");
             String partCode = (String) request.get("partCode");
-            Integer quantity = ((Number) request.get("quantity")).intValue();
+            Object kanbanValue = request.get("kanbanNo");
+            String scannedKanbanNo = kanbanValue == null ? "" : kanbanValue.toString().trim();
+            Object quantityValue = request.get("quantity");
+            if (!(quantityValue instanceof Number)) {
+                return Result.error("出库数量必须为数字");
+            }
+            Integer quantity = ((Number) quantityValue).intValue();
             String username = (String) session.getAttribute("user");
             if (username == null) username = "system";
+
+            if (orderNo == null || orderNo.isEmpty() || partCode == null || partCode.isEmpty()) {
+                return Result.error("出库单号和零件号不能为空");
+            }
+            if (scannedKanbanNo.isEmpty()) {
+                return Result.error("请先扫描库存看板后再出库");
+            }
+            if (quantity == null || quantity <= 0) {
+                return Result.error("出库数量必须大于0");
+            }
 
             // 1. 验证出库单状态
             String orderStatus = jdbcTemplate.queryForObject(
@@ -1045,6 +1204,29 @@ public class WmsController {
             }
 
             // 2. 查询当前库存,按FIFO原则(按入库时间排序)
+            List<Map<String, Object>> detailRows = jdbcTemplate.queryForList(
+                    "SELECT * FROM outbound_order_detail WHERE order_no = ? AND part_code = ?",
+                    orderNo, partCode);
+            if (detailRows.isEmpty()) {
+                return Result.error("零件 " + partCode + " 不在该出库单明细中");
+            }
+
+            Map<String, Object> detail = detailRows.get(0);
+            int expectedQuantity = ((Number) detail.get("expected_quantity")).intValue();
+            int shippedInDetail = ((Number) detail.get("shipped_quantity")).intValue();
+            int remainingInOrder = expectedQuantity - shippedInDetail;
+            if (remainingInOrder <= 0) {
+                return Result.error("零件 " + partCode + " 已完成出库");
+            }
+            if (quantity > remainingInOrder) {
+                return Result.error("出库数量超过订单剩余数量, 剩余: " + remainingInOrder);
+            }
+
+            int packagingCapacity = ((Number) detail.get("packaging_capacity")).intValue();
+            if (packagingCapacity <= 0) {
+                packagingCapacity = 1;
+            }
+
             String inventorySql = "SELECT * FROM current_inventory WHERE part_code = ? AND quantity > 0 ORDER BY created_at ASC";
             List<Map<String, Object>> inventoryList = jdbcTemplate.queryForList(inventorySql, partCode);
 
@@ -1061,6 +1243,50 @@ public class WmsController {
                 return Result.error("库存不足,当前可用: " + totalAvailable + ", 需要: " + quantity);
             }
 
+            boolean scannedInventoryKanban = false;
+            Map<String, Object> scannedInventory = null;
+            for (Map<String, Object> inventory : inventoryList) {
+                if (scannedKanbanNo.equals(String.valueOf(inventory.get("kanban_no")))) {
+                    scannedInventory = inventory;
+                    scannedInventoryKanban = true;
+                    break;
+                }
+            }
+
+            if (scannedInventoryKanban) {
+                String fifoKanbanNo = String.valueOf(inventoryList.get(0).get("kanban_no"));
+                if (!scannedKanbanNo.equals(fifoKanbanNo)) {
+                    return Result.error("不符合FIFO先进先出，请先出库最早入库看板 " + fifoKanbanNo + "，当前扫描看板 " + scannedKanbanNo);
+                }
+
+                int scannedAvailable = ((Number) scannedInventory.get("quantity")).intValue();
+                if (quantity > scannedAvailable) {
+                    return Result.error("出库数量超过扫描看板当前库存，当前看板可用: " + scannedAvailable);
+                }
+            } else {
+                List<Map<String, Object>> outboundLabelRows = jdbcTemplate.queryForList(
+                        "SELECT * FROM kanban WHERE kanban_no = ? AND status = 'pending'",
+                        scannedKanbanNo);
+                if (outboundLabelRows.isEmpty()) {
+                    return Result.error("扫描看板 " + scannedKanbanNo + " 不在当前库存中，也不是待出库看板");
+                }
+
+                Map<String, Object> outboundLabel = outboundLabelRows.get(0);
+                String labelOrderNo = String.valueOf(outboundLabel.get("order_no"));
+                String labelPartCode = String.valueOf(outboundLabel.get("part_code"));
+                if (!orderNo.equals(labelOrderNo)) {
+                    return Result.error("扫描看板属于出库单 " + labelOrderNo + "，当前出库单为 " + orderNo);
+                }
+                if (!partCode.equals(labelPartCode)) {
+                    return Result.error("扫描看板零件号 " + labelPartCode + " 与出库零件号 " + partCode + " 不一致");
+                }
+
+                int labelQuantity = ((Number) outboundLabel.get("quantity")).intValue();
+                if (quantity > labelQuantity) {
+                    return Result.error("出库数量超过看板数量，当前看板数量: " + labelQuantity);
+                }
+            }
+
             // 4. 按FIFO原则扣减库存
             int remainingQuantity = quantity;
             int totalBoxes = 0;
@@ -1072,7 +1298,7 @@ public class WmsController {
                 String kanbanNo = (String) inventory.get("kanban_no");
                 String locationCode = (String) inventory.get("location_code");
                 int inventoryQty = Math.min(remainingQuantity, currentQty);
-                int boxes = (int) Math.ceil((double) inventoryQty / currentQty);
+                int boxes = (int) Math.ceil((double) inventoryQty / packagingCapacity);
 
                 // 更新当前库存
                 if (inventoryQty == currentQty) {
@@ -1097,6 +1323,10 @@ public class WmsController {
                         inventory.get("supplier_code"), inventoryQty, locationCode, username);
             }
 
+            if (!scannedInventoryKanban) {
+                jdbcTemplate.update("UPDATE kanban SET status = 'outbound' WHERE kanban_no = ?", scannedKanbanNo);
+            }
+
             // 5. 更新出库单已出库数量
             jdbcTemplate.update("UPDATE outbound_order SET shipped_quantity = shipped_quantity + ?, " +
                     "shipped_boxes = shipped_boxes + ? WHERE order_no = ?", quantity, totalBoxes, orderNo);
@@ -1112,7 +1342,7 @@ public class WmsController {
             Integer shippedQuantity = jdbcTemplate.queryForObject(
                     "SELECT shipped_quantity FROM outbound_order WHERE order_no = ?", Integer.class, orderNo);
 
-            if (totalQuantity.equals(shippedQuantity)) {
+            if (shippedQuantity != null && totalQuantity != null && shippedQuantity >= totalQuantity) {
                 jdbcTemplate.update("UPDATE outbound_order SET status = 'completed' WHERE order_no = ?", orderNo);
             } else {
                 jdbcTemplate.update("UPDATE outbound_order SET status = 'partial' WHERE order_no = ?", orderNo);
@@ -1122,11 +1352,13 @@ public class WmsController {
             result.put("success", true);
             result.put("message", "出库成功");
             result.put("orderNo", orderNo);
+            result.put("kanbanNo", scannedKanbanNo);
             result.put("partCode", partCode);
             result.put("quantity", quantity);
             result.put("boxes", totalBoxes);
             return Result.success(result);
         } catch (Exception e) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             e.printStackTrace();
             return Result.error("扫码出库失败: " + e.getMessage());
         }
@@ -1197,7 +1429,7 @@ public class WmsController {
             StringBuilder sql = new StringBuilder(
                     "SELECT i.*, s.supplier_name, l.location_name FROM current_inventory i " +
                             "LEFT JOIN supplier s ON i.supplier_code = s.supplier_code " +
-                            "LEFT JOIN storage_location l ON i.location_code = l.location_code WHERE 1=1"
+                            "LEFT JOIN storage_location l ON i.location_code = l.location_code WHERE i.quantity > 0"
             );
             List<Object> params = new ArrayList<>();
 
@@ -1222,7 +1454,7 @@ public class WmsController {
             List<Map<String, Object>> inventory = jdbcTemplate.queryForList(sql.toString(), params.toArray());
 
             // 统计汇总
-            String sumSql = "SELECT SUM(quantity) as total_quantity, COUNT(*) as total_count FROM current_inventory";
+            String sumSql = "SELECT COALESCE(SUM(quantity), 0) as total_quantity, COUNT(*) as total_count FROM current_inventory WHERE quantity > 0";
             Map<String, Object> summary = jdbcTemplate.queryForMap(sumSql);
 
             Map<String, Object> result = new HashMap<>();
@@ -1241,6 +1473,39 @@ public class WmsController {
     /**
      * 根据看板追溯
      */
+    @GetMapping("/kanban/lifecycle/{kanbanNo}")
+    public Result<Map<String, Object>> getKanbanLifecycle(@PathVariable String kanbanNo) {
+        try {
+            String kanbanSql = "SELECT k.*, s.supplier_name, l.location_name FROM kanban k " +
+                    "LEFT JOIN supplier s ON k.supplier_code = s.supplier_code " +
+                    "LEFT JOIN storage_location l ON k.location_code = l.location_code " +
+                    "WHERE k.kanban_no = ?";
+            List<Map<String, Object>> kanbans = jdbcTemplate.queryForList(kanbanSql, kanbanNo);
+            if (kanbans.isEmpty()) {
+                return Result.error("看板不存在");
+            }
+
+            String inventorySql = "SELECT i.*, s.supplier_name, l.location_name FROM current_inventory i " +
+                    "LEFT JOIN supplier s ON i.supplier_code = s.supplier_code " +
+                    "LEFT JOIN storage_location l ON i.location_code = l.location_code " +
+                    "WHERE i.kanban_no = ? AND i.quantity > 0";
+            List<Map<String, Object>> currentInventory = jdbcTemplate.queryForList(inventorySql, kanbanNo);
+
+            String traceSql = "SELECT t.*, s.supplier_name FROM inventory_trace t " +
+                    "LEFT JOIN supplier s ON t.supplier_code = s.supplier_code " +
+                    "WHERE t.kanban_no = ? ORDER BY t.action_time ASC";
+            List<Map<String, Object>> traces = jdbcTemplate.queryForList(traceSql, kanbanNo);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("kanban", kanbans.get(0));
+            result.put("currentInventory", currentInventory);
+            result.put("traces", traces);
+            return Result.success(result);
+        } catch (Exception e) {
+            return Result.error("获取看板生命周期失败: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/trace/by-kanban/{kanbanNo}")
     public Result<List<WmsInventoryTrace>> getTraceByKanban(@PathVariable String kanbanNo) {
         try {

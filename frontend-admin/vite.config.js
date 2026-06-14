@@ -10,7 +10,7 @@ export default defineConfig({
     https: true,  // 启用 HTTPS
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8081',
         changeOrigin: true,
         configure: (proxy) => {
           proxy.on('proxyRes', (proxyRes) => {

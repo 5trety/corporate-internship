@@ -100,6 +100,10 @@ export function getTraceByKanban(kanbanNo) {
     return http.get(`/wms/trace/by-kanban/${kanbanNo}`)
 }
 
+export function getKanbanLifecycle(kanbanNo) {
+    return http.get(`/wms/kanban/lifecycle/${kanbanNo}`)
+}
+
 // ==================== 出库单管理 ====================
 export function createOutboundOrder(data) {
     return http.post('/wms/outbound-order/create', data)
@@ -123,6 +127,12 @@ export function deleteOutboundOrder(orderNo) {
 
 export function validateOutboundOrder(orderNo) {
     return http.get(`/wms/outbound-order/validate/${orderNo}`)
+}
+
+export function validateOutboundKanban(kanbanNo, orderNo) {
+    return http.get(`/wms/kanban/outbound-validate/${kanbanNo}`, {
+        params: orderNo ? { orderNo } : {}
+    })
 }
 
 // ==================== 扫码出库 ====================

@@ -54,7 +54,7 @@
         <el-table-column type="index" label="序号" width="60" />
         <el-table-column prop="partCode" label="零件号" width="180">
           <template #default="{ row, $index }">
-            <el-select v-model="row.partCode" filterable remote reserve-keyword :remote-method="searchParts" @change="(val) => onPartChange(val, $index)">
+            <el-select v-model="row.partCode" filterable clearable placeholder="请选择零件" style="width: 100%" @change="(val) => onPartChange(val, $index)">
               <el-option v-for="p in partOptions" :key="p.partCode" :label="`${p.partCode} - ${p.partName}`" :value="p.partCode" />
             </el-select>
           </template>
@@ -138,9 +138,8 @@ const calcTotal = () => {
 }
 
 const calcBoxes = (row) => {
-  if (row.packagingCapacity > 0) {
-    row.expectedBoxes = Math.ceil(row.expectedQuantity / row.packagingCapacity)
-  }
+  const capacity = row.packagingCapacity > 0 ? row.packagingCapacity : 1
+  row.expectedBoxes = Math.ceil((row.expectedQuantity || 0) / capacity)
   calcTotal()
 }
 
@@ -163,8 +162,8 @@ const removeDetail = (index) => {
 const onSupplierChange = async () => {
   // 清空零件选项，重新加载
   partOptions.value = []
-  if (formData.supplierCode) {
-    const res = await getPartList(formData.supplierCode)
+  if (partOptions.value.length === 0) {
+    const res = await getPartList()
     if (res.code === 200) {
       partOptions.value = res.data || []
     }
@@ -187,10 +186,11 @@ const searchParts = async (query) => {
 const onPartChange = (partCode, index) => {
   const part = partOptions.value.find(p => p.partCode === partCode)
   if (part) {
+    const capacity = part.packagingCapacity > 0 ? part.packagingCapacity : 1
     formData.details[index].partName = part.partName
-    formData.details[index].packagingCapacity = part.packagingCapacity
+    formData.details[index].packagingCapacity = capacity
     formData.details[index].unit = part.unit
-    formData.details[index].expectedBoxes = Math.ceil(formData.details[index].expectedQuantity / part.packagingCapacity)
+    formData.details[index].expectedBoxes = Math.ceil((formData.details[index].expectedQuantity || 0) / capacity)
   }
 }
 
@@ -260,12 +260,14 @@ const handleSubmit = async () => {
 
 onMounted(async () => {
   // 加载基础数据
-  const [supplierRes, warehouseRes] = await Promise.all([
+  const [supplierRes, warehouseRes, partRes] = await Promise.all([
     getSupplierList(),
-    getWarehouseList()
+    getWarehouseList(),
+    getPartList()
   ])
   if (supplierRes.code === 200) suppliers.value = supplierRes.data || []
   if (warehouseRes.code === 200) warehouses.value = warehouseRes.data || []
+  if (partRes.code === 200) partOptions.value = partRes.data || []
 
   // 检查是否为编辑模式
   if (route.params.orderNo) {

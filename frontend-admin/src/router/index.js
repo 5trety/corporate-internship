@@ -37,7 +37,6 @@ const routes = [
         component: () => import('../views/InfoCenterView.vue'),
         meta: { title: '标签页示例' }
       },
-      // ==================== WMS入库管理模块 ====================
       {
         path: 'wms',
         name: 'wms',
@@ -78,16 +77,9 @@ const routes = [
             name: 'scan-inbound',
             component: () => import('../views/wms/ScanInbound.vue'),
             meta: { title: '扫码入库' }
-          },
-          {
-            path: 'trace',
-            name: 'inventory-trace',
-            component: () => import('../views/wms/InventoryTrace.vue'),
-            meta: { title: '库存追溯' }
           }
         ]
       },
-      // ==================== WMS出库管理模块 ====================
       {
         path: 'wms-outbound',
         name: 'wms-outbound',
@@ -116,14 +108,14 @@ const routes = [
             name: 'scan-outbound',
             component: () => import('../views/wms/ScanOutbound.vue'),
             meta: { title: '扫码出库' }
-          },
-          {
-            path: 'history',
-            name: 'outbound-history',
-            component: () => import('../views/wms/OutboundHistory.vue'),
-            meta: { title: '出库历史' }
           }
         ]
+      },
+      {
+        path: 'inventory-trace',
+        name: 'inventory-trace',
+        component: () => import('../views/wms/InventoryTrace.vue'),
+        meta: { title: '库存追溯' }
       }
     ]
   },

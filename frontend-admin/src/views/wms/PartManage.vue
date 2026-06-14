@@ -56,7 +56,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="包装容量">
-          <el-input-number v-model="formData.packagingCapacity" :min="0" style="width: 100%" />
+          <el-input-number v-model="formData.packagingCapacity" :min="1" style="width: 100%" />
         </el-form-item>
         <el-form-item label="单位">
           <el-input v-model="formData.unit" placeholder="个/箱/套" />
@@ -97,7 +97,7 @@ const formData = reactive({
   partCode: '',
   partName: '',
   supplierCode: '',
-  packagingCapacity: 0,
+  packagingCapacity: 1,
   unit: '个',
   price: 0,
   weight: 0
@@ -140,7 +140,7 @@ const handleAdd = () => {
     partCode: '',
     partName: '',
     supplierCode: '',
-    packagingCapacity: 0,
+    packagingCapacity: 1,
     unit: '个',
     price: 0,
     weight: 0

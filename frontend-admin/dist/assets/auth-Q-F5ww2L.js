@@ -1,0 +1,1 @@
+import{t as e}from"./http-BeJ30aj4.js";function t(t,n){let r=new URLSearchParams;return r.set(`username`,t),r.set(`password`,n),e.post(`/login`,r,{headers:{"Content-Type":`application/x-www-form-urlencoded`}})}function n(){return e.post(`/logout`)}function r(){return e.get(`/menus`)}export{t as n,n as r,r as t};

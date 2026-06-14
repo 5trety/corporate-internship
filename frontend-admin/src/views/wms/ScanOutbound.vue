@@ -136,7 +136,7 @@
               <el-input-number
                 v-model="outboundQuantity"
                 :min="1"
-                :max="kanbanInfo.quantity"
+                :max="availableOutboundQuantity || 1"
                 size="large"
                 style="width: 100%"
               />
@@ -161,10 +161,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Check } from '@element-plus/icons-vue'
-import { validateKanban, scanOutbound, getOutboundOrderList, getFifoInventoryList } from '../../api/wms'
+import { validateOutboundKanban, validateOutboundOrder, scanOutbound, getOutboundOrderList } from '../../api/wms'
 import Scanner from '../../components/Scanner.vue'
 
 const scanInput = ref(null)
@@ -175,6 +175,64 @@ const orderInfo = ref(null)
 const pendingOrders = ref([])
 const outboundQuantity = ref(1)
 const submitting = ref(false)
+
+const toNumber = (value) => Number(value || 0)
+
+const getDetailPartCode = (detail) => detail?.part_code || detail?.partCode
+const getDetailExpectedQuantity = (detail) => toNumber(detail?.expected_quantity ?? detail?.expectedQuantity)
+const getDetailShippedQuantity = (detail) => toNumber(detail?.shipped_quantity ?? detail?.shippedQuantity)
+
+const findOrderDetail = (partCode) => {
+  const details = orderInfo.value?.details || []
+  return details.find(detail => getDetailPartCode(detail) === partCode)
+}
+
+const getRemainingQuantity = (detail) => {
+  if (!detail) return 0
+  return getDetailExpectedQuantity(detail) - getDetailShippedQuantity(detail)
+}
+
+const getAvailableQuantity = (kanban) => {
+  const stockQuantity = toNumber(kanban?.quantity)
+  const detail = findOrderDetail(kanban?.partCode)
+  if (!detail) return stockQuantity
+  return Math.max(0, Math.min(stockQuantity, getRemainingQuantity(detail)))
+}
+
+const availableOutboundQuantity = computed(() => getAvailableQuantity(kanbanInfo.value))
+
+const clampOutboundQuantity = () => {
+  const maxQuantity = availableOutboundQuantity.value
+  if (maxQuantity <= 0) {
+    outboundQuantity.value = 1
+    return
+  }
+  const nextQuantity = Math.max(1, toNumber(outboundQuantity.value) || 1)
+  outboundQuantity.value = Math.min(nextQuantity, maxQuantity)
+}
+
+const ensureKanbanMatchesOrder = (kanban) => {
+  if (!orderInfo.value || !kanban) return true
+
+  if (kanban.orderNo && kanban.orderNo !== orderInfo.value.orderNo) {
+    ElMessage.error(`看板属于出库单 ${kanban.orderNo}，请切换到对应出库单`)
+    return false
+  }
+
+  const detail = findOrderDetail(kanban.partCode)
+  if (!detail) {
+    ElMessage.error(`零件 ${kanban.partCode} 不在当前出库单明细中`)
+    return false
+  }
+
+  const remainingQuantity = getRemainingQuantity(detail)
+  if (remainingQuantity <= 0) {
+    ElMessage.error(`零件 ${kanban.partCode} 已完成出库，请扫描其他零件`)
+    return false
+  }
+
+  return true
+}
 
 // 摄像头扫码回调
 const onScanDecode = (result) => {
@@ -190,10 +248,20 @@ const handleScan = async () => {
     return
   }
 
-  const res = await validateKanban(scanCode.value)
+  const res = await validateOutboundKanban(scanCode.value, orderNo.value)
   if (res.code === 200) {
-    kanbanInfo.value = res.data
-    outboundQuantity.value = res.data.quantity
+    const scannedKanban = res.data
+    if (scannedKanban.orderNo && !orderNo.value) {
+      orderNo.value = scannedKanban.orderNo
+      await loadOrderInfo({ silent: true })
+    }
+    if (!ensureKanbanMatchesOrder(scannedKanban)) {
+      kanbanInfo.value = null
+      return
+    }
+    kanbanInfo.value = scannedKanban
+    outboundQuantity.value = getAvailableQuantity(scannedKanban)
+    clampOutboundQuantity()
     ElMessage.success('看板验证成功')
     scanCode.value = ''
     nextTick(() => {
@@ -207,35 +275,54 @@ const handleScan = async () => {
 
 const loadPendingOrders = async () => {
   try {
-    const res = await getOutboundOrderList({ status: 'pending', page: 1, pageSize: 100 })
-    if (res.code === 200) {
-      pendingOrders.value = res.data?.list || []
-    }
+    const responses = await Promise.all([
+      getOutboundOrderList({ status: 'pending', page: 1, pageSize: 100 }),
+      getOutboundOrderList({ status: 'partial', page: 1, pageSize: 100 })
+    ])
+    pendingOrders.value = responses
+      .filter(res => res.code === 200)
+      .flatMap(res => res.data?.list || [])
   } catch (error) {
     console.error('加载出库单失败:', error)
   }
 }
 
-const loadOrderInfo = async () => {
+const loadOrderInfo = async (options = {}) => {
+  const silent = options.silent === true
   if (!orderNo.value) {
     ElMessage.warning('请选择出库单')
     return
   }
   
   try {
-    const res = await getOutboundOrderList({ page: 1, pageSize: 1 })
+    const res = await validateOutboundOrder(orderNo.value)
     if (res.code === 200) {
-      const order = res.data?.list?.find(o => o.orderNo === orderNo.value)
+      const order = res.data
       if (order) {
         orderInfo.value = order
-        ElMessage.success('出库单加载成功')
+        if (!silent) {
+          ElMessage.success('出库单加载成功')
+        }
+        if (kanbanInfo.value && !ensureKanbanMatchesOrder(kanbanInfo.value)) {
+          kanbanInfo.value = null
+          outboundQuantity.value = 1
+        } else {
+          clampOutboundQuantity()
+        }
       } else {
         ElMessage.error('出库单不存在')
+      }
+    } else {
+      orderInfo.value = null
+      if (!silent) {
+        ElMessage.error(res.message || '出库单无效或已完成')
       }
     }
   } catch (error) {
     console.error('加载出库单失败:', error)
-    ElMessage.error('加载出库单失败')
+    if (!silent) {
+      ElMessage.error('加载出库单失败')
+    }
   }
 }
 
@@ -252,11 +339,16 @@ const confirmOutbound = async () => {
     ElMessage.warning('请输入出库数量')
     return
   }
+  if (!ensureKanbanMatchesOrder(kanbanInfo.value)) {
+    return
+  }
+  clampOutboundQuantity()
 
   submitting.value = true
   try {
     const res = await scanOutbound({
       orderNo: orderInfo.value.orderNo,
+      kanbanNo: kanbanInfo.value.kanbanNo,
       partCode: kanbanInfo.value.partCode,
       quantity: outboundQuantity.value
     })
@@ -269,6 +361,7 @@ const confirmOutbound = async () => {
       
       // 重新加载待出库订单列表
       await loadPendingOrders()
+      await loadOrderInfo({ silent: true })
     } else {
       ElMessage.error(res.message || '出库失败')
     }
