@@ -226,6 +226,106 @@ public class WmsOutboundController {
     // ==================== 扫码出库 ====================
 
     /**
+     * 打印出库单（生成出库二维码数据）
+     */
+    @GetMapping("/print/outbound-order/{orderNo}")
+    public Result<Map<String, Object>> printOutboundOrder(@PathVariable String orderNo, HttpSession session) {
+        try {
+            // 查询出库单详情
+            Result<Map<String, Object>> detailResult = getOutboundOrderDetail(orderNo);
+            if (detailResult.getCode() != 200) {
+                return detailResult;
+            }
+
+            Map<String, Object> data = detailResult.getData();
+            Map<String, Object> order = (Map<String, Object>) data.get("order");
+            List<Map<String, Object>> details = (List<Map<String, Object>>) data.get("details");
+
+            // 为每个明细生成二维码内容
+            List<Map<String, Object>> detailWithQR = new ArrayList<>();
+            for (Map<String, Object> detail : details) {
+                Map<String, Object> item = new HashMap<>(detail);
+                
+                // 生成出库二维码内容
+                // 格式：OUTBOUND|出库单号|零件号|预期数量|时间戳
+                String qrContent = String.format(
+                    "OUTBOUND|%s|%s|%s|%s",
+                    orderNo,
+                    detail.get("part_code"),
+                    detail.get("expected_quantity"),
+                    LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
+                );
+                
+                item.put("qrContent", qrContent);
+                item.put("qrType", "OUTBOUND");
+                detailWithQR.add(item);
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("order", order);
+            result.put("details", detailWithQR);
+            result.put("qrType", "OUTBOUND_ORDER");
+            return Result.success(result);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Result.error("获取打印数据失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 批量生成出库二维码
+     */
+    @PostMapping("/generate-qr-codes")
+    public Result<List<Map<String, Object>>> generateQRCodes(@RequestBody Map<String, Object> request, HttpSession session) {
+        try {
+            String orderNo = (String) request.get("orderNo");
+            @SuppressWarnings("unchecked")
+            List<String> partCodes = (List<String>) request.get("partCodes");
+
+            if (orderNo == null || partCodes == null || partCodes.isEmpty()) {
+                return Result.error("参数不完整");
+            }
+
+            // 查询出库单明细
+            String detailSql = "SELECT * FROM outbound_order_detail WHERE order_no = ? AND part_code IN (?)";
+            List<Map<String, Object>> details = jdbcTemplate.queryForList(detailSql, orderNo, String.join(",", partCodes));
+
+            // 生成二维码数据
+            List<Map<String, Object>> qrCodes = new ArrayList<>();
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+
+            for (Map<String, Object> detail : details) {
+                Map<String, Object> qrData = new HashMap<>();
+                
+                // 二维码内容：OUTBOUND|出库单号|零件号|数量|时间戳
+                String qrContent = String.format(
+                    "OUTBOUND|%s|%s|%s|%s",
+                    orderNo,
+                    detail.get("part_code"),
+                    detail.get("expected_quantity"),
+                    timestamp
+                );
+
+                qrData.put("orderNo", orderNo);
+                qrData.put("partCode", detail.get("part_code"));
+                qrData.put("partName", detail.get("part_name"));
+                qrData.put("quantity", detail.get("expected_quantity"));
+                qrData.put("unit", detail.get("unit"));
+                qrData.put("qrContent", qrContent);
+                
+                qrCodes.add(qrData);
+            }
+
+            return Result.success(qrCodes);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Result.error("生成二维码失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 验证看板是否可以出库
      * 先进先出（FIFO）原则：优先出库早入库的看板
      */
