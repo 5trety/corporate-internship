@@ -33,7 +33,7 @@
 
 <script setup>
 import { useRoute } from 'vue-router'
-import { Document, Grid, House, Key, Setting, User } from '@element-plus/icons-vue'
+import { Document, Grid, House, Key, Setting, User, Box, Goods, Plus, Camera, Search } from '@element-plus/icons-vue'
 import { watch } from 'vue'
 
 const props = defineProps({
@@ -57,7 +57,12 @@ const iconMap = {
   House,
   Key,
   Setting,
-  User
+  User,
+  Box,
+  Goods,
+  Plus,
+  Camera,
+  Search
 }
 
 function resolveIcon(name) {

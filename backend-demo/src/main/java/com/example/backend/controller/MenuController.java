@@ -136,7 +136,7 @@ public class MenuController {
         wmsOutbound.put("icon", "Box");
         wmsOutbound.put("component", null);
 
-        List<Map<String, Object>> outboundChildren = new ArrayList<>();
+        List<Map<String, Object>> wmsOutboundChildren = new ArrayList<>();
 
         Map<String, Object> outboundList = new LinkedHashMap<>();
         outboundList.put("id", 51);
@@ -144,33 +144,33 @@ public class MenuController {
         outboundList.put("path", "/wms-outbound/outbound-order/list");
         outboundList.put("icon", "Document");
         outboundList.put("component", "OutboundOrderList");
-        outboundChildren.add(outboundList);
+        wmsOutboundChildren.add(outboundList);
 
-        Map<String, Object> createOutbound = new LinkedHashMap<>();
-        createOutbound.put("id", 52);
-        createOutbound.put("name", "创建出库单");
-        createOutbound.put("path", "/wms-outbound/outbound-order/create");
-        createOutbound.put("icon", "Plus");
-        createOutbound.put("component", "OutboundOrderForm");
-        outboundChildren.add(createOutbound);
+        Map<String, Object> createOutboundOrder = new LinkedHashMap<>();
+        createOutboundOrder.put("id", 52);
+        createOutboundOrder.put("name", "创建出库单");
+        createOutboundOrder.put("path", "/wms-outbound/outbound-order/create");
+        createOutboundOrder.put("icon", "Plus");
+        createOutboundOrder.put("component", "OutboundOrderForm");
+        wmsOutboundChildren.add(createOutboundOrder);
 
         Map<String, Object> scanOutbound = new LinkedHashMap<>();
         scanOutbound.put("id", 53);
         scanOutbound.put("name", "扫码出库");
-        scanOutbound.put("path", "/wms-outbound/scan-outbound");
+        scanOutbound.put("path", "/wms-outbound/scan");
         scanOutbound.put("icon", "Camera");
         scanOutbound.put("component", "ScanOutbound");
-        outboundChildren.add(scanOutbound);
+        wmsOutboundChildren.add(scanOutbound);
 
-        Map<String, Object> outboundTrace = new LinkedHashMap<>();
-        outboundTrace.put("id", 54);
-        outboundTrace.put("name", "库存追溯");
-        outboundTrace.put("path", "/wms-outbound/trace");
-        outboundTrace.put("icon", "Search");
-        outboundTrace.put("component", "TraceList");
-        outboundChildren.add(outboundTrace);
+        Map<String, Object> outboundHistory = new LinkedHashMap<>();
+        outboundHistory.put("id", 54);
+        outboundHistory.put("name", "出库历史");
+        outboundHistory.put("path", "/wms-outbound/history");
+        outboundHistory.put("icon", "Search");
+        outboundHistory.put("component", "OutboundHistory");
+        wmsOutboundChildren.add(outboundHistory);
 
-        wmsOutbound.put("children", outboundChildren);
+        wmsOutbound.put("children", wmsOutboundChildren);
         menus.add(wmsOutbound);
 
         return Result.success(menus);

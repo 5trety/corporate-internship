@@ -65,6 +65,10 @@ export function printInboundOrder(orderNo) {
     return http.get(`/wms/print/inbound-order/${orderNo}`)
 }
 
+export function printOutboundOrder(orderNo) {
+    return http.get(`/wms/print/outbound-order/${orderNo}`)
+}
+
 export function printKanban(data) {
     return http.post('/wms/print/kanban', data)
 }
@@ -83,49 +87,6 @@ export function scanInbound(data) {
     return http.post('/wms/scan/inbound', data)
 }
 
-// ==================== 出库单管理 ====================
-export function createOutboundOrder(data) {
-    return http.post('/wms/outbound/create', data)
-}
-
-export function getOutboundOrderList(params) {
-    return http.get('/wms/outbound/list', { params })
-}
-
-export function getOutboundOrderDetail(orderNo) {
-    return http.get(`/wms/outbound/detail/${orderNo}`)
-}
-
-export function deleteOutboundOrder(orderNo) {
-    return http.delete(`/wms/outbound/delete/${orderNo}`)
-}
-
-export function updateOutboundOrder(orderNo, data) {
-    return http.put(`/wms/outbound/update/${orderNo}`, data)
-}
-
-// ==================== 打印出库二维码 ====================
-export function printOutboundOrder(orderNo) {
-    return http.get(`/wms/outbound/print/outbound-order/${orderNo}`)
-}
-
-export function generateOutboundQRCodes(data) {
-    return http.post('/wms/outbound/generate-qr-codes', data)
-}
-
-// ==================== 扫码出库 ====================
-export function validateKanbanForOutbound(kanbanNo) {
-    return http.get(`/wms/outbound/kanban/validate/${kanbanNo}`)
-}
-
-export function scanOutbound(data) {
-    return http.post('/wms/outbound/scan/outbound', data)
-}
-
-export function getFIFOKanbans(params) {
-    return http.get('/wms/outbound/fifo/list', { params })
-}
-
 // ==================== 库存追溯 ====================
 export function getTraceList(params) {
     return http.get('/wms/trace/list', { params })
@@ -137,4 +98,39 @@ export function getCurrentInventory(params) {
 
 export function getTraceByKanban(kanbanNo) {
     return http.get(`/wms/trace/by-kanban/${kanbanNo}`)
+}
+
+// ==================== 出库单管理 ====================
+export function createOutboundOrder(data) {
+    return http.post('/wms/outbound-order/create', data)
+}
+
+export function getOutboundOrderList(params) {
+    return http.get('/wms/outbound-order/list', { params })
+}
+
+export function getOutboundOrderDetail(orderNo) {
+    return http.get(`/wms/outbound-order/detail/${orderNo}`)
+}
+
+export function updateOutboundOrder(orderNo, data) {
+    return http.put(`/wms/outbound-order/update/${orderNo}`, data)
+}
+
+export function deleteOutboundOrder(orderNo) {
+    return http.delete(`/wms/outbound-order/delete/${orderNo}`)
+}
+
+export function validateOutboundOrder(orderNo) {
+    return http.get(`/wms/outbound-order/validate/${orderNo}`)
+}
+
+// ==================== 扫码出库 ====================
+export function scanOutbound(data) {
+    return http.post('/wms/scan/outbound', data)
+}
+
+// ==================== FIFO库存查询 ====================
+export function getFifoInventoryList(partCode) {
+    return http.get('/wms/inventory/fifo-list', { params: { partCode } })
 }

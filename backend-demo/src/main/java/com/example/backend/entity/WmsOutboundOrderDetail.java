@@ -1,18 +1,15 @@
 package com.example.backend.entity;
 
-/**
- * 出库单明细实体类
- */
 public class WmsOutboundOrderDetail {
     private Integer id;
     private String orderNo;
     private String partCode;
     private String partName;
-    private Integer expectedQuantity;  // 预期出库数量
-    private Integer shippedQuantity;   // 已出库数量
+    private Integer expectedQuantity;
+    private Integer shippedQuantity;
     private Integer packagingCapacity;
-    private Integer expectedBoxes;     // 预期箱数
-    private Integer shippedBoxes;      // 已出库箱数
+    private Integer expectedBoxes;
+    private Integer shippedBoxes;
     private String unit;
 
     // Getters and Setters

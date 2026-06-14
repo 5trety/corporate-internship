@@ -1,19 +1,17 @@
 package com.example.backend.entity;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
-/**
- * 出库单实体类
- */
 public class WmsOutboundOrder {
     private Integer id;
     private String orderNo;
-    private String outboundType;  // 出库类型：销售出库、退货出库、生产领料等
-    private String customerCode;  // 客户编码
-    private String customerName;  // 客户名称
+    private String outboundType;
+    private String customerCode;
+    private String customerName;
     private String warehouseCode;
     private String warehouseName;
-    private String status;  // pending(待出库), partial(部分出库), completed(已完成)
+    private String status;
     private String statusText;
     private Integer totalQuantity;
     private Integer shippedQuantity;
@@ -23,7 +21,9 @@ public class WmsOutboundOrder {
     private String createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private List<WmsOutboundOrderDetail> details;
 
+    // 状态常量
     public static final String STATUS_PENDING = "pending";
     public static final String STATUS_PARTIAL = "partial";
     public static final String STATUS_COMPLETED = "completed";
@@ -70,4 +70,6 @@ public class WmsOutboundOrder {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+    public List<WmsOutboundOrderDetail> getDetails() { return details; }
+    public void setDetails(List<WmsOutboundOrderDetail> details) { this.details = details; }
 }

@@ -2,352 +2,292 @@
   <div class="wms-page">
     <div class="page-header">
       <h2>扫码出库</h2>
-      <el-button @click="$router.back()">
-        <el-icon><Back /></el-icon>
-        返回
-      </el-button>
     </div>
 
-    <el-card shadow="never">
-      <el-alert
-        title="先进先出(FIFO)说明"
-        type="info"
-        :closable="false"
-        show-icon
-        style="margin-bottom: 20px"
-      >
-        系统会根据入库时间自动推荐应出库的看板，优先出库早入库的物料。
-        请扫描看板上的二维码或输入看板号进行出库操作。
-      </el-alert>
+    <el-row :gutter="20" class="scan-layout">
+      <!-- 左侧/上方：摄像头扫码 -->
+      <el-col :xs="24" :md="12">
+        <el-card shadow="never" class="scanner-card">
+          <template #header>
+            <div class="card-header">
+              <span>📷 摄像头扫码</span>
+            </div>
+          </template>
+          <Scanner @decode="onScanDecode" />
+        </el-card>
 
-      <!-- 扫码输入区域 -->
-      <div class="scan-input-section">
-        <el-form :inline="true" class="scan-form">
-          <el-form-item label="看板号" style="flex: 1">
-            <el-input 
-              v-model="scanInput" 
-              placeholder="请扫描或输入看板号" 
-              size="large"
-              @keyup.enter="handleScan"
-              ref="scanInputRef"
-              style="width: 100%"
-            >
-              <template #append>
-                <el-button @click="handleScan" size="large">扫码出库</el-button>
-              </template>
-            </el-input>
-          </el-form-item>
-        </el-form>
-      </div>
+        <el-card shadow="never" class="order-card">
+          <template #header>
+            <div class="card-header">
+              <span>📋 出库单信息</span>
+            </div>
+          </template>
+          <el-form>
+            <el-form-item label="出库单号">
+              <el-select
+                v-model="orderNo"
+                placeholder="请选择出库单"
+                filterable
+                style="width: 100%"
+                :disabled="!!orderInfo"
+                size="large"
+              >
+                <el-option
+                  v-for="order in pendingOrders"
+                  :key="order.orderNo"
+                  :label="`${order.orderNo} - ${order.outboundType}`"
+                  :value="order.orderNo"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item>
+              <el-button
+                type="primary"
+                size="large"
+                :disabled="!orderNo"
+                @click="loadOrderInfo"
+                style="width: 100%"
+              >
+                <el-icon><Search /></el-icon>
+                加载出库单
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </el-card>
+      </el-col>
 
-      <!-- 出库结果展示 -->
-      <div v-if="lastOutbound" class="outbound-result">
-        <el-divider>最近出库记录</el-divider>
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="看板号">{{ lastOutbound.kanbanNo }}</el-descriptions-item>
-          <el-descriptions-item label="出库数量">{{ lastOutbound.outboundQuantity }}</el-descriptions-item>
-          <el-descriptions-item label="零件号">{{ lastOutbound.partCode }}</el-descriptions-item>
-          <el-descriptions-item label="零件名称">{{ lastOutbound.partName }}</el-descriptions-item>
-          <el-descriptions-item label="追溯号">{{ lastOutbound.traceNo }}</el-descriptions-item>
-          <el-descriptions-item label="出库时间">{{ lastOutbound.outboundTime }}</el-descriptions-item>
-        </el-descriptions>
-      </div>
+      <!-- 右侧/下方：手动输入 + 出库信息 -->
+      <el-col :xs="24" :md="12">
+        <el-card shadow="never" class="input-card">
+          <template #header>
+            <div class="card-header">
+              <span>⌨️ 手动输入</span>
+            </div>
+          </template>
+          <el-form @submit.prevent="handleScan">
+            <el-form-item label="扫描看板二维码">
+              <el-input
+                v-model="scanCode"
+                placeholder="请扫描或输入看板号"
+                size="large"
+                ref="scanInput"
+                @keyup.enter="handleScan"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+              </el-input>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" size="large" @click="handleScan" style="width: 100%">
+                <el-icon><Search /></el-icon>
+                验证看板
+              </el-button>
+            </el-form-item>
+          </el-form>
 
-      <!-- FIFO推荐看板列表 -->
-      <el-divider>FIFO推荐出库看板</el-divider>
-      
-      <div class="fifo-info">
-        <el-alert
-          title="系统会根据入库时间（FIFO原则）自动推荐应先出库的看板"
-          type="warning"
-          :closable="false"
-          show-icon
-        />
-      </div>
+          <el-alert
+            v-if="kanbanInfo"
+            title="✅ 看板验证成功"
+            type="success"
+            show-icon
+            :closable="false"
+            class="kanban-alert"
+          >
+            <template #default>
+              <div class="kanban-info">
+                <div class="info-item">
+                  <span class="label">零件号：</span>
+                  <span class="value">{{ kanbanInfo.partCode }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">零件名称：</span>
+                  <span class="value">{{ kanbanInfo.partName }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">数量：</span>
+                  <span class="value highlight">{{ kanbanInfo.quantity }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">供应商：</span>
+                  <span class="value">{{ kanbanInfo.supplierName }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">看板号：</span>
+                  <span class="value code">{{ kanbanInfo.kanbanNo }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">库位：</span>
+                  <span class="value">{{ kanbanInfo.locationCode }}</span>
+                </div>
+              </div>
+            </template>
+          </el-alert>
+        </el-card>
 
-      <el-table :data="fifoKanbans" stripe v-loading="loadingFIFO" max-height="500">
-        <el-table-column prop="kanban_no" label="看板号" width="180">
-          <template #default="{ row }">
-            <el-tag type="primary">{{ row.kanban_no }}</el-tag>
+        <el-card shadow="never" class="action-card" v-if="orderInfo && kanbanInfo">
+          <template #header>
+            <div class="card-header">
+              <span>✅ 确认出库</span>
+            </div>
           </template>
-        </el-table-column>
-        <el-table-column prop="part_code" label="零件号" width="150" />
-        <el-table-column prop="part_name" label="零件名称" />
-        <el-table-column prop="current_quantity" label="库存数量" width="100">
-          <template #default="{ row }">
-            <el-tag type="success">{{ row.current_quantity }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="inbound_time" label="入库时间" width="180">
-          <template #default="{ row }">
-            {{ formatTime(row.inbound_time) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="库位" width="120">
-          <template #default="{ row }">
-            {{ row.location_code || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
-          <template #default="{ row }">
-            <el-button 
-              type="primary" 
-              size="small" 
-              @click="handleScanKanban(row)"
-              :disabled="row.status !== 'stored'"
-            >
-              扫码出库
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <el-empty v-if="fifoKanbans.length === 0 && !loadingFIFO" description="暂无待出库看板" />
-
-      <!-- 所有库存看板 -->
-      <el-divider>所有库存看板</el-divider>
-      
-      <el-table :data="allKanbans" stripe v-loading="loadingAll" max-height="400">
-        <el-table-column prop="kanban_no" label="看板号" width="180">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 'stored' ? 'primary' : 'info'">{{ row.kanban_no }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="part_code" label="零件号" width="150" />
-        <el-table-column prop="part_name" label="零件名称" />
-        <el-table-column prop="current_quantity" label="库存" width="80">
-          <template #default="{ row }">
-            <el-tag :type="row.current_quantity > 0 ? 'success' : 'info'">{{ row.current_quantity }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="getKanbanStatusType(row.status)">{{ getKanbanStatusText(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
-          <template #default="{ row }">
-            <el-button 
-              type="primary" 
-              size="small" 
-              @click="handleScanKanban(row)"
-              :disabled="row.status !== 'stored' || row.current_quantity <= 0"
-            >
-              扫码
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
-
-    <!-- 出库数量确认弹窗 -->
-    <el-dialog title="确认出库数量" v-model="confirmDialogVisible" width="500px">
-      <el-descriptions :column="1" border>
-        <el-descriptions-item label="看板号">{{ currentKanban?.kanban_no }}</el-descriptions-item>
-        <el-descriptions-item label="零件号">{{ currentKanban?.part_code }}</el-descriptions-item>
-        <el-descriptions-item label="零件名称">{{ currentKanban?.part_name }}</el-descriptions-item>
-        <el-descriptions-item label="当前库存">{{ currentKanban?.current_quantity }}</el-descriptions-item>
-      </el-descriptions>
-      
-      <el-form style="margin-top: 20px">
-        <el-form-item label="出库数量">
-          <el-input-number 
-            v-model="outboundQuantity" 
-            :min="1" 
-            :max="currentKanban?.current_quantity || 1" 
-            style="width: 100%"
-          />
-        </el-form-item>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="confirmDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmOutbound" :loading="confirming">确认出库</el-button>
-      </template>
-    </el-dialog>
+          <el-form>
+            <el-form-item label="出库数量">
+              <el-input-number
+                v-model="outboundQuantity"
+                :min="1"
+                :max="kanbanInfo.quantity"
+                size="large"
+                style="width: 100%"
+              />
+            </el-form-item>
+            <el-form-item>
+              <el-button
+                type="success"
+                size="large"
+                @click="confirmOutbound"
+                :loading="submitting"
+                style="width: 100%"
+              >
+                <el-icon><Check /></el-icon>
+                确认出库 (FIFO)
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </el-card>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Back } from '@element-plus/icons-vue'
-import { 
-  validateKanbanForOutbound, 
-  scanOutbound, 
-  getFIFOKanbans,
-  getKanbanList
-} from '../../api/wms'
+import { Search, Check } from '@element-plus/icons-vue'
+import { validateKanban, scanOutbound, getOutboundOrderList, getFifoInventoryList } from '../../api/wms'
+import Scanner from '../../components/Scanner.vue'
 
-const router = useRouter()
-const scanInput = ref('')
-const scanInputRef = ref(null)
-const loadingFIFO = ref(false)
-const loadingAll = ref(false)
-const fifoKanbans = ref([])
-const allKanbans = ref([])
-const lastOutbound = ref(null)
-
-// 出库确认相关
-const confirmDialogVisible = ref(false)
-const confirming = ref(false)
-const currentKanban = ref(null)
+const scanInput = ref(null)
+const scanCode = ref('')
+const kanbanInfo = ref(null)
+const orderNo = ref('')
+const orderInfo = ref(null)
+const pendingOrders = ref([])
 const outboundQuantity = ref(1)
+const submitting = ref(false)
 
-const getKanbanStatusType = (status) => {
-  switch (status) {
-    case 'pending': return 'warning'
-    case 'stored': return 'success'
-    case 'outbound': return 'info'
-    default: return ''
-  }
-}
-
-const getKanbanStatusText = (status) => {
-  switch (status) {
-    case 'pending': return '待入库'
-    case 'stored': return '已入库'
-    case 'outbound': return '已出库'
-    default: return status
-  }
-}
-
-const formatTime = (timeStr) => {
-  if (!timeStr) return '-'
-  try {
-    const date = new Date(timeStr)
-    return date.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    })
-  } catch (e) {
-    return timeStr
-  }
-}
-
-const loadFIFOKanbans = async () => {
-  loadingFIFO.value = true
-  try {
-    const res = await getFIFOKanbans({})
-    if (res.code === 200) {
-      fifoKanbans.value = res.data || []
-    }
-  } finally {
-    loadingFIFO.value = false
-  }
-}
-
-const loadAllKanbans = async () => {
-  loadingAll.value = true
-  try {
-    const res = await getKanbanList({ status: '', page: 1, pageSize: 100 })
-    if (res.code === 200) {
-      allKanbans.value = res.data?.list || []
-    }
-  } finally {
-    loadingAll.value = false
+// 摄像头扫码回调
+const onScanDecode = (result) => {
+  if (result) {
+    scanCode.value = result
+    handleScan()
   }
 }
 
 const handleScan = async () => {
-  if (!scanInput.value.trim()) {
+  if (!scanCode.value.trim()) {
     ElMessage.warning('请输入看板号')
     return
   }
-  
-  await performOutbound(scanInput.value.trim())
-  scanInput.value = ''
-  
-  // 重新聚焦输入框
-  nextTick(() => {
-    scanInputRef.value?.focus()
-  })
+
+  const res = await validateKanban(scanCode.value)
+  if (res.code === 200) {
+    kanbanInfo.value = res.data
+    outboundQuantity.value = res.data.quantity
+    ElMessage.success('看板验证成功')
+    scanCode.value = ''
+    nextTick(() => {
+      scanInput.value?.focus()
+    })
+  } else {
+    ElMessage.error(res.message || '看板无效或已使用')
+    kanbanInfo.value = null
+  }
 }
 
-const handleScanKanban = (row) => {
-  currentKanban.value = row
-  outboundQuantity.value = Math.min(row.current_quantity, 1)
-  confirmDialogVisible.value = true
+const loadPendingOrders = async () => {
+  try {
+    const res = await getOutboundOrderList({ status: 'pending', page: 1, pageSize: 100 })
+    if (res.code === 200) {
+      pendingOrders.value = res.data?.list || []
+    }
+  } catch (error) {
+    console.error('加载出库单失败:', error)
+  }
+}
+
+const loadOrderInfo = async () => {
+  if (!orderNo.value) {
+    ElMessage.warning('请选择出库单')
+    return
+  }
+  
+  try {
+    const res = await getOutboundOrderList({ page: 1, pageSize: 1 })
+    if (res.code === 200) {
+      const order = res.data?.list?.find(o => o.orderNo === orderNo.value)
+      if (order) {
+        orderInfo.value = order
+        ElMessage.success('出库单加载成功')
+      } else {
+        ElMessage.error('出库单不存在')
+      }
+    }
+  } catch (error) {
+    console.error('加载出库单失败:', error)
+    ElMessage.error('加载出库单失败')
+  }
 }
 
 const confirmOutbound = async () => {
-  if (!currentKanban.value) return
-  
-  confirming.value = true
+  if (!orderInfo.value) {
+    ElMessage.warning('请先加载出库单')
+    return
+  }
+  if (!kanbanInfo.value) {
+    ElMessage.warning('请先扫描看板')
+    return
+  }
+  if (!outboundQuantity.value || outboundQuantity.value <= 0) {
+    ElMessage.warning('请输入出库数量')
+    return
+  }
+
+  submitting.value = true
   try {
     const res = await scanOutbound({
-      kanbanNo: currentKanban.value.kanban_no,
-      outboundQuantity: outboundQuantity.value
+      orderNo: orderInfo.value.orderNo,
+      partCode: kanbanInfo.value.partCode,
+      quantity: outboundQuantity.value
     })
     
     if (res.code === 200) {
-      ElMessage.success('出库成功！')
+      ElMessage.success(`出库成功：${kanbanInfo.value.partName} x ${outboundQuantity.value}`)
+      kanbanInfo.value = null
+      outboundQuantity.value = 1
+      scanCode.value = ''
       
-      // 更新最近出库记录
-      lastOutbound.value = {
-        kanbanNo: currentKanban.value.kanban_no,
-        partCode: currentKanban.value.part_code,
-        partName: currentKanban.value.part_name,
-        outboundQuantity: outboundQuantity.value,
-        traceNo: res.data?.traceNo || '',
-        outboundTime: new Date().toLocaleString()
-      }
-      
-      // 刷新列表
-      await Promise.all([loadFIFOKanbans(), loadAllKanbans()])
-      
-      confirmDialogVisible.value = false
+      // 重新加载待出库订单列表
+      await loadPendingOrders()
     } else {
       ElMessage.error(res.message || '出库失败')
     }
-  } finally {
-    confirming.value = false
-  }
-}
-
-const performOutbound = async (kanbanNo) => {
-  try {
-    // 先验证看板
-    const validateRes = await validateKanbanForOutbound(kanbanNo)
-    if (validateRes.code !== 200) {
-      ElMessage.error(validateRes.message || '看板验证失败')
-      return
-    }
-    
-    const kanbanData = validateRes.data
-    
-    // 询问出库数量
-    currentKanban.value = {
-      kanban_no: kanbanNo,
-      part_code: kanbanData.part_code,
-      part_name: kanbanData.part_name,
-      current_quantity: kanbanData.current_quantity
-    }
-    outboundQuantity.value = kanbanData.current_quantity
-    confirmDialogVisible.value = true
-    
   } catch (error) {
-    console.error('扫码出库失败:', error)
-    ElMessage.error('扫码出库失败: ' + (error.message || '未知错误'))
+    console.error('出库错误:', error)
+    ElMessage.error('出库失败: ' + (error.message || '未知错误'))
+  } finally {
+    submitting.value = false
+    nextTick(() => {
+      scanInput.value?.focus()
+    })
   }
 }
 
-onMounted(async () => {
-  // 自动聚焦扫码输入框
+onMounted(() => {
+  loadPendingOrders()
   nextTick(() => {
-    scanInputRef.value?.focus()
+    scanInput.value?.focus()
   })
-  
-  // 加载数据
-  await Promise.all([
-    loadFIFOKanbans(),
-    loadAllKanbans()
-  ])
 })
 </script>
 
@@ -355,54 +295,157 @@ onMounted(async () => {
 .wms-page {
   padding: 20px;
 }
+
 .page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   margin-bottom: 20px;
 }
+
 .page-header h2 {
   margin: 0;
+  font-size: 24px;
 }
-.scan-input-section {
-  background: #f5f7fa;
-  padding: 20px;
-  border-radius: 4px;
-  margin-bottom: 20px;
+
+.scan-layout {
+  display: flex;
+  gap: 20px;
 }
-.scan-form {
+
+.card-header {
   display: flex;
   align-items: center;
+  font-size: 16px;
+  font-weight: 600;
 }
-.scan-form :deep(.el-form-item) {
-  flex: 1;
-  margin-bottom: 0;
-}
-.outbound-result {
+
+.scanner-card,
+.order-card,
+.input-card,
+.action-card {
   margin-bottom: 20px;
 }
-.fifo-info {
-  margin-bottom: 16px;
+
+.kanban-alert {
+  margin-top: 20px;
+}
+
+.kanban-info {
+  padding: 12px 0;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px dashed #e4e7ed;
+  font-size: 14px;
+}
+
+.info-item:last-child {
+  border-bottom: none;
+}
+
+.info-item .label {
+  color: #909399;
+  min-width: 90px;
+  font-weight: 500;
+}
+
+.info-item .value {
+  color: #303133;
+  flex: 1;
+}
+
+.info-item .value.highlight {
+  color: #67c23a;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.info-item .value.code {
+  font-family: 'Courier New', monospace;
+  background: #f5f7fa;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
 }
 
 /* 移动端优化 */
 @media (max-width: 768px) {
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-  
-  .page-header .el-button {
-    width: 100%;
-  }
-  
-  .scan-input-section {
+  .wms-page {
     padding: 12px;
   }
-  
-  .el-table {
+
+  .page-header h2 {
+    font-size: 20px;
+  }
+
+  .scan-layout {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .scanner-card,
+  .order-card,
+  .input-card,
+  .action-card {
+    margin-bottom: 16px;
+  }
+
+  .card-header {
+    font-size: 15px;
+  }
+
+  /* 表单标签优化 */
+  :deep(.el-form-item__label) {
+    font-size: 14px;
+  }
+
+  /* 输入框和按钮优化 */
+  :deep(.el-input__inner) {
+    font-size: 16px;
+  }
+
+  :deep(.el-button) {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  /* 看板信息优化 */
+  .info-item {
+    padding: 10px 0;
+    font-size: 15px;
+  }
+
+  .info-item .label {
+    min-width: 80px;
+    font-size: 14px;
+  }
+
+  .info-item .value {
+    font-size: 15px;
+  }
+
+  .info-item .value.highlight {
+    font-size: 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .wms-page {
+    padding: 8px;
+  }
+
+  .page-header h2 {
+    font-size: 18px;
+  }
+
+  .info-item .label {
+    min-width: 70px;
     font-size: 13px;
+  }
+
+  .info-item .value {
+    font-size: 14px;
   }
 }
 </style>
