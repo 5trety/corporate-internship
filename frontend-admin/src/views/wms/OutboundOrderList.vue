@@ -62,9 +62,9 @@
         <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="viewDetail(row)">查看</el-button>
-            <el-button link type="primary" @click="editOrder(row)" v-if="row.status !== 'completed'">编辑</el-button>
+            <el-button link type="primary" @click="editOrder(row)" v-if="row.status === 'pending'">编辑</el-button>
             <el-button link type="success" @click="openScanOutbound(row)" v-if="row.status !== 'completed'">扫码出库</el-button>
-            <el-button link type="primary" @click="openPrintOutbound(row)" v-if="row.status !== 'completed'">打印</el-button>
+            <el-button link type="primary" @click="router.push(`/wms-outbound/print/${row.order_no}`)">打印</el-button>
             <el-button link type="danger" @click="handleDelete(row)" v-if="row.status === 'pending'">删除</el-button>
           </template>
         </el-table-column>
@@ -326,13 +326,8 @@ const resetSearch = () => {
   loadData()
 }
 
-const viewDetail = async (row) => {
-  const res = await getOutboundOrderDetail(row.order_no)
-  if (res.code === 200) {
-    detailData.value = res.data?.order || {}
-    detailDetails.value = res.data?.details || []
-    detailVisible.value = true
-  }
+const viewDetail = (row) => {
+  router.push(`/wms-outbound/outbound-order/detail/${row.order_no}`)
 }
 
 const editOrder = (row) => {

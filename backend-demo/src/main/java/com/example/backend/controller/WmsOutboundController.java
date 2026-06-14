@@ -320,6 +320,99 @@ public class WmsOutboundController {
         }
     }
 
+    /**
+     * 更新出库单（仅待出库状态可更新）
+     */
+    @PutMapping("/update/{orderNo}")
+    public Result<Map<String, Object>> updateOutboundOrder(
+            @PathVariable String orderNo,
+            @RequestBody Map<String, Object> requestData,
+            HttpSession session) {
+        try {
+            // 检查出库单状态
+            String statusSql = "SELECT status FROM outbound_order WHERE order_no = ?";
+            String status = jdbcTemplate.queryForObject(statusSql, String.class, orderNo);
+
+            if (!"pending".equals(status)) {
+                return Result.error("只有待出库状态的出库单才能修改");
+            }
+
+            // 获取更新数据
+            String outboundType = (String) requestData.get("outboundType");
+            String customerCode = (String) requestData.get("customerCode");
+            String customerName = (String) requestData.get("customerName");
+            String warehouseCode = (String) requestData.get("warehouseCode");
+            String remark = (String) requestData.get("remark");
+
+            // 处理details
+            Object detailsObj = requestData.get("details");
+            List<Map<String, Object>> details = new ArrayList<>();
+
+            if (detailsObj instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Object> detailList = (List<Object>) detailsObj;
+                for (Object item : detailList) {
+                    if (item instanceof Map) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> detailMap = (Map<String, Object>) item;
+                        details.add(detailMap);
+                    }
+                }
+            }
+
+            // 更新主单
+            String updateOrderSql = "UPDATE outbound_order SET " +
+                    "outbound_type = ?, customer_code = ?, customer_name = ?, " +
+                    "warehouse_code = ?, remark = ?, updated_at = NOW() " +
+                    "WHERE order_no = ?";
+            jdbcTemplate.update(updateOrderSql, outboundType, customerCode, customerName,
+                    warehouseCode, remark, orderNo);
+
+            // 删除旧的明细
+            jdbcTemplate.update("DELETE FROM outbound_order_detail WHERE order_no = ?", orderNo);
+
+            // 插入新的明细
+            int totalQuantity = 0;
+            int totalBoxes = 0;
+
+            for (Map<String, Object> detail : details) {
+                String partCode = (String) detail.get("partCode");
+                String partName = (String) detail.get("partName");
+                Integer expectedQuantity = toInteger(detail.get("expectedQuantity"));
+                Integer packagingCapacity = toInteger(detail.get("packagingCapacity"));
+                Integer expectedBoxes = toInteger(detail.get("expectedBoxes"));
+
+                if (expectedQuantity == null || expectedQuantity <= 0) {
+                    return Result.error("零件 " + partCode + " 的预期数量必须大于0");
+                }
+
+                String insertDetailSql = "INSERT INTO outbound_order_detail " +
+                        "(order_no, part_code, part_name, expected_quantity, shipped_quantity, " +
+                        "packaging_capacity, expected_boxes, shipped_boxes, unit) " +
+                        "VALUES (?, ?, ?, ?, 0, ?, ?, 0, '个')";
+                jdbcTemplate.update(insertDetailSql, orderNo, partCode, partName,
+                        expectedQuantity, packagingCapacity, expectedBoxes);
+
+                totalQuantity += expectedQuantity;
+                totalBoxes += expectedBoxes;
+            }
+
+            // 更新汇总
+            String updateTotalSql = "UPDATE outbound_order SET " +
+                    "total_quantity = ?, total_boxes = ? WHERE order_no = ?";
+            jdbcTemplate.update(updateTotalSql, totalQuantity, totalBoxes, orderNo);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("orderNo", orderNo);
+            return Result.success(result);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Result.error("更新出库单失败: " + e.getMessage());
+        }
+    }
+
     // ==================== 扫码出库 ====================
 
     /**

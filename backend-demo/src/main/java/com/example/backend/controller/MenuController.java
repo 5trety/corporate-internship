@@ -162,6 +162,14 @@ public class MenuController {
         scanOutbound.put("component", "ScanOutbound");
         outboundChildren.add(scanOutbound);
 
+        Map<String, Object> outboundTrace = new LinkedHashMap<>();
+        outboundTrace.put("id", 54);
+        outboundTrace.put("name", "库存追溯");
+        outboundTrace.put("path", "/wms-outbound/trace");
+        outboundTrace.put("icon", "Search");
+        outboundTrace.put("component", "TraceList");
+        outboundChildren.add(outboundTrace);
+
         wmsOutbound.put("children", outboundChildren);
         menus.add(wmsOutbound);
 

@@ -106,16 +106,34 @@ const routes = [
             meta: { title: '创建出库单' }
           },
           {
+            path: 'outbound-order/detail/:orderNo',
+            name: 'outbound-order-detail',
+            component: () => import('../views/wms/OutboundOrderDetail.vue'),
+            meta: { title: '出库单详情' }
+          },
+          {
             path: 'outbound-order/edit/:orderNo',
             name: 'outbound-order-edit',
             component: () => import('../views/wms/OutboundOrderForm.vue'),
             meta: { title: '编辑出库单' }
           },
           {
+            path: 'print/:orderNo',
+            name: 'print-outbound',
+            component: () => import('../views/wms/PrintOutbound.vue'),
+            meta: { title: '打印出库单' }
+          },
+          {
             path: 'scan-outbound',
             name: 'scan-outbound',
             component: () => import('../views/wms/ScanOutbound.vue'),
             meta: { title: '扫码出库' }
+          },
+          {
+            path: 'trace',
+            name: 'outbound-trace',
+            component: () => import('../views/wms/TraceList.vue'),
+            meta: { title: '库存追溯' }
           }
         ]
       }
