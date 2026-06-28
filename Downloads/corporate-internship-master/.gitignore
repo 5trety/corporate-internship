@@ -1,0 +1,24 @@
+# IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# 编译输出
+target/
+build/
+dist/
+node_modules/
+
+# 日志
+*.log
+
+# 本地配置
+.local-mysql/
+ai-predict-service/.venv/
+__pycache__/
+*.env.local
+
+# 操作系统
+.DS_Store
+Thumbs.db
